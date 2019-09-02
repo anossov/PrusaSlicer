@@ -429,6 +429,11 @@ using Index3D = bgi::rtree< PointIndexEl, bgi::rstar<16, 4> /* ? */ >;
 
 namespace {
 
+bool cmp_ptidx_elements(const PointIndexEl& e1, const PointIndexEl& e2)
+{
+    return e1.second < e2.second;
+};
+
 ClusteredPoints cluster(Index3D &sindex,
                         unsigned max_points,
                         std::function<std::vector<PointIndexEl>(
@@ -440,25 +445,22 @@ ClusteredPoints cluster(Index3D &sindex,
     // each other
     std::function<void(Elems&, Elems&)> group =
     [&sindex, &group, max_points, qfn](Elems& pts, Elems& cluster)
-    {
+    {        
         for(auto& p : pts) {
             std::vector<PointIndexEl> tmp = qfn(sindex, p);
-            auto cmp = [](const PointIndexEl& e1, const PointIndexEl& e2){
-                return e1.second < e2.second;
-            };
-
-            std::sort(tmp.begin(), tmp.end(), cmp);
+           
+            std::sort(tmp.begin(), tmp.end(), cmp_ptidx_elements);
 
             Elems newpts;
             std::set_difference(tmp.begin(), tmp.end(),
                                 cluster.begin(), cluster.end(),
-                                std::back_inserter(newpts), cmp);
+                                std::back_inserter(newpts), cmp_ptidx_elements);
 
             int c = max_points && newpts.size() + cluster.size() > max_points?
                         int(max_points - cluster.size()) : int(newpts.size());
 
             cluster.insert(cluster.end(), newpts.begin(), newpts.begin() + c);
-            std::sort(cluster.begin(), cluster.end(), cmp);
+            std::sort(cluster.begin(), cluster.end(), cmp_ptidx_elements);
 
             if(!newpts.empty() && (!max_points || cluster.size() < max_points))
                 group(newpts, cluster);

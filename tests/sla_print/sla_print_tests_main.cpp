@@ -80,7 +80,7 @@ void test_pad(const std::string &   obj_filename,
     
     ASSERT_FALSE(out.model_contours.empty());
     
-    // Create a default pad, m_support_contours are empty here
+    // Create the pad geometry the model contours only
     Slic3r::sla::create_pad({}, out.model_contours, out.mesh, padcfg);
     
     check_validity(mesh);
