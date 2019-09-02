@@ -64,7 +64,7 @@ std::string OBJ_STEP_LABELS(size_t idx)
     case slaposObjectSlice:     return L("Slicing model");
     case slaposSupportPoints:   return L("Generating support points");
     case slaposSupportTree:     return L("Generating support tree");
-    case slaposBasePool:        return L("Generating pad");
+    case slaposPad:        return L("Generating pad");
     case slaposSliceSupports:   return L("Slicing supports");
     default:;
     }
@@ -663,17 +663,11 @@ std::string SLAPrint::validate() const
 
         sla::SupportConfig cfg = make_support_cfg(po->config());
 
-        double pinhead_width =
-                2 * cfg.head_front_radius_mm +
-                cfg.head_width_mm +
-                2 * cfg.head_back_radius_mm -
-                cfg.head_penetration_mm;
-
         double elv = cfg.object_elevation_mm;
 
         sla::PadConfig::EmbedObject builtinpad = builtin_pad_cfg(po->config());
         
-        if(supports_en && !builtinpad.enabled && elv < pinhead_width )
+        if(supports_en && !builtinpad.enabled && elv < cfg.head_fullwidth())
             return L(
                 "Elevation is too low for object. Use the \"Pad around "
                 "obect\" feature to print the object without elevation.");
@@ -1468,7 +1462,7 @@ void SLAPrint::process()
 
     // We want to first process all objects...
     std::vector<SLAPrintObjectStep> level1_obj_steps = {
-        slaposObjectSlice, slaposSupportPoints, slaposSupportTree, slaposBasePool
+        slaposObjectSlice, slaposSupportPoints, slaposSupportTree, slaposPad
     };
 
     // and then slice all supports to allow preview to be displayed ASAP
@@ -1714,7 +1708,7 @@ bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_conf
             || opt_key == "pad_object_connector_width"
             || opt_key == "pad_object_connector_penetration"
             ) {
-            steps.emplace_back(slaposBasePool);
+            steps.emplace_back(slaposPad);
         } else {
             // All keys should be covered.
             assert(false);
@@ -1734,12 +1728,12 @@ bool SLAPrintObject::invalidate_step(SLAPrintObjectStep step)
     if (step == slaposObjectSlice) {
         invalidated |= this->invalidate_all_steps();
     } else if (step == slaposSupportPoints) {
-        invalidated |= this->invalidate_steps({ slaposSupportTree, slaposBasePool, slaposSliceSupports });
+        invalidated |= this->invalidate_steps({ slaposSupportTree, slaposPad, slaposSliceSupports });
         invalidated |= m_print->invalidate_step(slapsMergeSlicesAndEval);
     } else if (step == slaposSupportTree) {
-        invalidated |= this->invalidate_steps({ slaposBasePool, slaposSliceSupports });
+        invalidated |= this->invalidate_steps({ slaposPad, slaposSliceSupports });
         invalidated |= m_print->invalidate_step(slapsMergeSlicesAndEval);
-    } else if (step == slaposBasePool) {
+    } else if (step == slaposPad) {
         invalidated |= this->invalidate_steps({slaposSliceSupports});
         invalidated |= m_print->invalidate_step(slapsMergeSlicesAndEval);
     } else if (step == slaposSliceSupports) {
@@ -1777,7 +1771,7 @@ double SLAPrintObject::get_current_elevation() const
     if (is_zero_elevation(m_config)) return 0.;
 
     bool has_supports = is_step_done(slaposSupportTree);
-    bool has_pad      = is_step_done(slaposBasePool);
+    bool has_pad      = is_step_done(slaposPad);
 
     if(!has_supports && !has_pad)
         return 0;
@@ -1848,7 +1842,7 @@ bool SLAPrintObject::has_mesh(SLAPrintObjectStep step) const
     switch (step) {
     case slaposSupportTree:
         return ! this->support_mesh().empty();
-    case slaposBasePool:
+    case slaposPad:
         return ! this->pad_mesh().empty();
     default:
         return false;
@@ -1860,7 +1854,7 @@ TriangleMesh SLAPrintObject::get_mesh(SLAPrintObjectStep step) const
     switch (step) {
     case slaposSupportTree:
         return this->support_mesh();
-    case slaposBasePool:
+    case slaposPad:
         return this->pad_mesh();
     default:
         return TriangleMesh();

@@ -274,6 +274,8 @@ double EigenMesh3D::squared_distance(const Vec3d &p, int& i, Vec3d& c) const {
  * Misc functions
  * ****************************************************************************/
 
+namespace  {
+
 bool point_on_edge(const Vec3d& p, const Vec3d& e1, const Vec3d& e2,
                    double eps = 0.05)
 {
@@ -289,11 +291,13 @@ template<class Vec> double distance(const Vec& pp1, const Vec& pp2) {
     return std::sqrt(p.transpose() * p);
 }
 
+}
+
 PointSet normals(const PointSet& points,
                  const EigenMesh3D& mesh,
                  double eps,
                  std::function<void()> thr, // throw on cancel
-                 const std::vector<unsigned>& pt_indices = {})
+                 const std::vector<unsigned>& pt_indices)
 {
     if(points.rows() == 0 || mesh.V().rows() == 0 || mesh.F().rows() == 0)
         return {};
@@ -419,8 +423,11 @@ PointSet normals(const PointSet& points,
 
     return ret;
 }
+
 namespace bgi = boost::geometry::index;
 using Index3D = bgi::rtree< PointIndexEl, bgi::rstar<16, 4> /* ? */ >;
+
+namespace {
 
 ClusteredPoints cluster(Index3D &sindex,
                         unsigned max_points,
@@ -479,7 +486,6 @@ ClusteredPoints cluster(Index3D &sindex,
     return result;
 }
 
-namespace {
 std::vector<PointIndexEl> distance_queryfn(const Index3D& sindex,
                                           const PointIndexEl& p,
                                           double dist,
@@ -496,7 +502,8 @@ std::vector<PointIndexEl> distance_queryfn(const Index3D& sindex,
 
     return tmp;
 }
-}
+
+} // namespace
 
 // Clustering a set of points by the given criteria
 ClusteredPoints cluster(
@@ -558,5 +565,5 @@ ClusteredPoints cluster(const PointSet& pts, double dist, unsigned max_points)
     });
 }
 
-}
-}
+} // namespace sla
+} // namespace Slic3r

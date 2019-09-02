@@ -9,7 +9,6 @@
 
 #include "SLACommon.hpp"
 
-
 namespace Slic3r {
 
 // Needed types from Point.hpp
@@ -85,6 +84,11 @@ struct SupportConfig {
     // The shortest distance between a pillar base perimeter from the model
     // body. This is only useful when elevation is set to zero.
     double pillar_base_safety_distance_mm = 0.5;
+    
+    double head_fullwidth() const {
+        return 2 * head_front_radius_mm + head_width_mm +
+               2 * head_back_radius_mm - head_penetration_mm;
+    }
 
     // /////////////////////////////////////////////////////////////////////////
     // Compile time configuration values (candidates for runtime)
@@ -123,17 +127,6 @@ struct Controller {
     // terminate itself
     std::function<void(void)> cancelfn = [](){};
 };
-
-using PointSet = Eigen::MatrixXd;
-
-//EigenMesh3D to_eigenmesh(const TriangleMesh& m);
-
-// needed for find best rotation
-//EigenMesh3D to_eigenmesh(const ModelObject& model);
-
-// Simple conversion of 'vector of points' to an Eigen matrix
-//PointSet    to_point_set(const std::vector<sla::SupportPoint>&);
-
 
 /* ************************************************************************** */
 

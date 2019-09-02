@@ -99,8 +99,9 @@ template<> struct _ccr<true>
         auto   iN = to - from;
         size_t N  = iN < 0 ? 0 : size_t(iN);
 
-        tbb::parallel_for(size_t(0), N,
-                          [from, fn](size_t n) { fn(*(from + long(n)), n); });
+        tbb::parallel_for(size_t(0), N, [from, fn](size_t n) {
+            fn(*(from + decltype(iN)(n)), n);
+        });
     }
 };
 
@@ -131,6 +132,8 @@ template<class Vec> double distance(const Vec& pp1, const Vec& pp2) {
     auto p = pp2 - pp1;
     return distance(p);
 }
+
+namespace {
 
 Contour3D sphere(double rho, Portion portion = make_portion(0.0, 2.0*PI),
                  double fa=(2*PI/360)) {
@@ -290,6 +293,8 @@ Contour3D cylinder(double r, double h, size_t ssteps, const Vec3d &sp = {0,0,0})
     return ret;
 }
 
+const constexpr long ID_UNSET = -1;
+
 struct Head {
     Contour3D mesh;
 
@@ -301,15 +306,15 @@ struct Head {
     double r_pin_mm = 0.5;
     double width_mm = 2;
     double penetration_mm = 0.5;
-
+    
     // For identification purposes. This will be used as the index into the
     // container holding the head structures. See SLASupportTree::Impl
-    long id = -1;
+    long id = ID_UNSET;
 
     // If there is a pillar connecting to this head, then the id will be set.
-    long pillar_id = -1;
+    long pillar_id = ID_UNSET;
 
-    inline void invalidate() { id = -1; }
+    inline void invalidate() { id = ID_UNSET; }
     inline bool is_valid() const { return id >= 0; }
 
     Head(double r_big_mm,
@@ -348,7 +353,7 @@ struct Head {
         auto&& s1 = sphere(r_big_mm, make_portion(0, PI/2 + phi), detail);
         auto&& s2 = sphere(r_small_mm, make_portion(PI/2 + phi, PI), detail);
 
-        for(auto& p : s2.points) z(p) += h;
+        for(auto& p : s2.points) p.z() += h;
 
         mesh.merge(s1);
         mesh.merge(s2);
@@ -374,7 +379,7 @@ struct Head {
 
         // To simplify further processing, we translate the mesh so that the
         // last vertex of the pointing sphere (the pinpoint) will be at (0,0,0)
-        for(auto& p : mesh.points) z(p) -= (h + r_small_mm - penetration_mm);
+        for(auto& p : mesh.points) p.z() -= (h + r_small_mm - penetration_mm);
     }
 
     void transform()
@@ -394,11 +399,6 @@ struct Head {
         return 2 * r_pin_mm + width_mm + 2*r_back_mm - penetration_mm;
     }
 
-    static double fullwidth(const SupportConfig& cfg) {
-        return 2 * cfg.head_front_radius_mm + cfg.head_width_mm +
-               2 * cfg.head_back_radius_mm - cfg.head_penetration_mm;
-    }
-
     Vec3d junction_point() const {
         return tr + ( 2 * r_pin_mm + width_mm + r_back_mm - penetration_mm)*dir;
     }
@@ -415,7 +415,7 @@ struct Junction {
     size_t steps = 45;
     Vec3d pos;
 
-    long id = -1;
+    long id = ID_UNSET;
 
     Junction(const Vec3d& tr, double r_mm, size_t stepnum = 45):
         r(r_mm), steps(stepnum), pos(tr)
@@ -433,11 +433,11 @@ struct Pillar {
     Vec3d endpt;
     double height = 0;
 
-    long id = -1;
+    long id = ID_UNSET;
 
     // If the pillar connects to a head, this is the id of that head
     bool starts_from_head = true; // Could start from a junction as well
-    long start_junction_id = -1;
+    long start_junction_id = ID_UNSET;
 
     // How many bridges are connected to this pillar
     unsigned bridges = 0;
@@ -462,22 +462,24 @@ struct Pillar {
         }
     }
 
-    Pillar(const Junction& junc, const Vec3d& endp):
-        Pillar(junc.pos, endp, junc.r, junc.steps){}
+    Pillar(const Junction &junc, const Vec3d &endp)
+        : Pillar(junc.pos, endp, junc.r, junc.steps)
+    {}
 
-    Pillar(const Head& head, const Vec3d& endp, double radius = 1):
-        Pillar(head.junction_point(), endp, head.request_pillar_radius(radius),
-               head.steps)
+    Pillar(const Head &head, const Vec3d &endp, double radius = 1)
+        : Pillar(head.junction_point(), endp,
+                 head.request_pillar_radius(radius), head.steps)
+    {}
+
+    inline Vec3d startpoint() const
     {
-    }
-
-    inline Vec3d startpoint() const {
         return {endpt(X), endpt(Y), endpt(Z) + height};
     }
 
     inline const Vec3d& endpoint() const { return endpt; }
 
-    Pillar& add_base(double baseheight = 3, double radius = 2) {
+    Pillar& add_base(double baseheight = 3, double radius = 2)
+    {
         if(baseheight <= 0) return *this;
         if(baseheight > height) baseheight = height;
 
@@ -524,8 +526,6 @@ struct Pillar {
         indices.emplace_back(offs, offs + last, lcenter);
         return *this;
     }
-
-    bool has_base() const { return !base.points.empty(); }
 };
 
 // A Bridge between two pillars (with junction endpoints)
@@ -533,9 +533,9 @@ struct Bridge {
     Contour3D mesh;
     double r = 0.8;
 
-    long id = -1;
-    long start_jid = -1;
-    long end_jid = -1;
+    long id = ID_UNSET;
+    long start_jid = ID_UNSET;
+    long end_jid = ID_UNSET;
 
     // We should reduce the radius a tiny bit to help the convex hull algorithm
     Bridge(const Vec3d& j1, const Vec3d& j2,
@@ -551,17 +551,13 @@ struct Bridge {
         auto quater = Quaternion::FromTwoVectors(Vec3d{0,0,1}, dir);
         for(auto& p : mesh.points) p = quater * p + j1;
     }
-
-    Bridge(const Junction& j1, const Junction& j2, double r_mm = 0.8):
-        Bridge(j1.pos, j2.pos, r_mm, j1.steps) {}
-
 };
 
 // A bridge that spans from model surface to model surface with small connecting
 // edges on the endpoints. Used for headless support points.
 struct CompactBridge {
     Contour3D mesh;
-    long id = -1;
+    long id = ID_UNSET;
 
     CompactBridge(const Vec3d& sp,
                   const Vec3d& ep,
@@ -757,43 +753,24 @@ struct Pad {
 };
 
 // The minimum distance for two support points to remain valid.
-static const double /*constexpr*/ D_SP   = 0.1;
+const double /*constexpr*/ D_SP = 0.1;
+
+} // namespace
 
 enum { // For indexing Eigen vectors as v(X), v(Y), v(Z) instead of numbers
   X, Y, Z
 };
 
-// Calculate the normals for the selected points (from 'points' set) on the
-// mesh. This will call squared distance for each point.
-PointSet normals(const PointSet& points,
-                 const EigenMesh3D& mesh,
-                 double eps = 0.05,  // min distance from edges
-                 std::function<void()> throw_on_cancel = [](){},
-                 const std::vector<unsigned>& selected_points = {});
-
 inline Vec2d to_vec2(const Vec3d& v3) {
     return {v3(X), v3(Y)};
 }
 
+namespace {
 bool operator==(const PointIndexEl& e1, const PointIndexEl& e2) {
     return e1.second == e2.second;
 }
+}
 
-// Clustering a set of points by the given distance.
-ClusteredPoints cluster(const std::vector<unsigned>& indices,
-                        std::function<Vec3d(unsigned)> pointfn,
-                        double dist,
-                        unsigned max_points);
-
-ClusteredPoints cluster(const PointSet& points,
-                        double dist,
-                        unsigned max_points);
-
-ClusteredPoints cluster(
-        const std::vector<unsigned>& indices,
-        std::function<Vec3d(unsigned)> pointfn,
-        std::function<bool(const PointIndexEl&, const PointIndexEl&)> predicate,
-        unsigned max_points);
 
 // This class will hold the support tree meshes with some additional bookkeeping
 // as well. Various parts of the support geometry are stored separately and are
@@ -812,21 +789,20 @@ class SLASupportTree::Impl {
     // For heads it is beneficial to use the same IDs as for the support points.
     std::vector<Head> m_heads;
     std::vector<size_t> m_head_indices;
-
     std::vector<Pillar> m_pillars;
     std::vector<Junction> m_junctions;
     std::vector<Bridge> m_bridges;
-    std::vector<CompactBridge> m_compact_bridges;
-    Controller m_ctl;
-
+    std::vector<CompactBridge> m_compact_bridges;    
     Pad m_pad;
+    
+    Controller m_ctl;
 
     using Mutex = ccr::Mutex;
 
-    mutable TriangleMesh meshcache;
+    mutable TriangleMesh m_meshcache;
     mutable Mutex m_mutex;
-    mutable bool meshcache_valid = false;
-    mutable double model_height = 0; // the full height of the model
+    mutable bool m_meshcache_valid = false;
+    mutable double m_model_height = 0; // the full height of the model
 
 public:
     double ground_level = 0;
@@ -845,7 +821,7 @@ public:
         if (id >= m_head_indices.size()) m_head_indices.resize(id + 1);
         m_head_indices[id] = m_heads.size() - 1;
 
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_heads.back();
     }
 
@@ -863,7 +839,7 @@ public:
         pillar.start_junction_id = head.id;
         pillar.starts_from_head = true;
 
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_pillars.back();
     }
 
@@ -892,20 +868,8 @@ public:
         Pillar& pillar = m_pillars.back();
         pillar.id = long(m_pillars.size() - 1);
         pillar.starts_from_head = false;
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_pillars.back();
-    }
-
-    const Head& pillar_head(long pillar_id) const
-    {
-        std::lock_guard<Mutex> lk(m_mutex);
-        assert(pillar_id >= 0 && pillar_id < long(m_pillars.size()));
-
-        const Pillar& p = m_pillars[size_t(pillar_id)];
-        assert(p.starts_from_head && p.start_junction_id >= 0);
-        assert(size_t(p.start_junction_id) < m_head_indices.size());
-
-        return m_heads[m_head_indices[size_t(p.start_junction_id)]];
     }
 
     const Pillar& head_pillar(unsigned headid) const
@@ -924,7 +888,7 @@ public:
         std::lock_guard<Mutex> lk(m_mutex);
         m_junctions.emplace_back(std::forward<Args>(args)...);
         m_junctions.back().id = long(m_junctions.size() - 1);
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_junctions.back();
     }
 
@@ -933,7 +897,7 @@ public:
         std::lock_guard<Mutex> lk(m_mutex);
         m_bridges.emplace_back(std::forward<Args>(args)...);
         m_bridges.back().id = long(m_bridges.size() - 1);
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_bridges.back();
     }
 
@@ -942,7 +906,7 @@ public:
         std::lock_guard<Mutex> lk(m_mutex);
         m_compact_bridges.emplace_back(std::forward<Args>(args)...);
         m_compact_bridges.back().id = long(m_compact_bridges.size() - 1);
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_compact_bridges.back();
     }
 
@@ -951,7 +915,7 @@ public:
         std::lock_guard<Mutex> lk(m_mutex);
         assert(id < m_head_indices.size());
 
-        meshcache_valid = false;
+        m_meshcache_valid = false;
         return m_heads[m_head_indices[id]];
     }
 
@@ -984,7 +948,7 @@ public:
     // WITHOUT THE PAD!!!
     const TriangleMesh &merged_mesh() const
     {
-        if (meshcache_valid) return meshcache;
+        if (m_meshcache_valid) return m_meshcache;
 
         Contour3D merged;
 
@@ -1016,21 +980,21 @@ public:
 
         if (m_ctl.stopcondition()) {
             // In case of failure we have to return an empty mesh
-            meshcache = TriangleMesh();
-            return meshcache;
+            m_meshcache = TriangleMesh();
+            return m_meshcache;
         }
 
-        meshcache = mesh(merged);
+        m_meshcache = mesh(merged);
 
         // The mesh will be passed by const-pointer to TriangleMeshSlicer,
         // which will need this.
-        if (!meshcache.empty()) meshcache.require_shared_vertices();
+        if (!m_meshcache.empty()) m_meshcache.require_shared_vertices();
 
-        BoundingBoxf3 &&bb = meshcache.bounding_box();
-        model_height       = bb.max(Z) - bb.min(Z);
+        BoundingBoxf3 &&bb = m_meshcache.bounding_box();
+        m_model_height       = bb.max(Z) - bb.min(Z);
 
-        meshcache_valid = true;
-        return meshcache;
+        m_meshcache_valid = true;
+        return m_meshcache;
     }
 
     // WITH THE PAD
@@ -1047,8 +1011,8 @@ public:
     // WITHOUT THE PAD!!!
     double mesh_height() const
     {
-        if (!meshcache_valid) merged_mesh();
-        return model_height;
+        if (!m_meshcache_valid) merged_mesh();
+        return m_model_height;
     }
 
     // Intended to be called after the generation is fully complete
@@ -1074,7 +1038,7 @@ long cluster_centroid(const ClusterEl& clust,
                       DistFn df)
 {
     switch(clust.size()) {
-    case 0: /* empty cluster */ return -1;
+    case 0: /* empty cluster */ return ID_UNSET;
     case 1: /* only one element */ return 0;
     case 2: /* if two elements, there is no center */ return 0;
     default: ;
@@ -1547,7 +1511,7 @@ class SLASupportTree::Algorithm {
     bool search_pillar_and_connect(const Head& head) {
         PointIndex spindex = m_pillar_index;
 
-        long nearest_id = -1;
+        long nearest_id = ID_UNSET;
 
         Vec3d querypoint = head.junction_point();
 
@@ -1568,8 +1532,8 @@ class SLASupportTree::Algorithm {
                 auto nearpillarID = unsigned(nearest_id);
                 if(nearpillarID < m_result.pillarcount()) {
                     if(!connect_to_nearpillar(head, nearpillarID)) {
-                        nearest_id = -1;    // continue searching
-                        spindex.remove(ne); // without the current pillar
+                        nearest_id = ID_UNSET;    // continue searching
+                        spindex.remove(ne);       // without the current pillar
                     }
                 }
             }
@@ -1583,7 +1547,7 @@ class SLASupportTree::Algorithm {
     void create_ground_pillar(const Vec3d &jp,
                               const Vec3d &sourcedir,
                               double       radius,
-                              long         head_id = -1)
+                              long         head_id = ID_UNSET)
     {
         // People were killed for this number (seriously)
         static const double SQR2 = std::sqrt(2.0);
@@ -1592,7 +1556,7 @@ class SLASupportTree::Algorithm {
         double gndlvl       = m_result.ground_level;
         Vec3d  endp         = {jp(X), jp(Y), gndlvl};
         double sd           = m_cfg.pillar_base_safety_distance_mm;
-        long   pillar_id    = -1;
+        long   pillar_id    = ID_UNSET;
         double min_dist     = sd + m_cfg.base_radius_mm + EPSILON;
         double dist         = 0;
         bool   can_add_base = true;
@@ -1605,7 +1569,7 @@ class SLASupportTree::Algorithm {
             // the ground level only.
 
             normal_mode     = false;
-            double mv       = min_dist - dist;
+            double mind       = min_dist - dist;
             double azimuth  = std::atan2(sourcedir(Y), sourcedir(X));
             double sinpolar = std::sin(PI - m_cfg.bridge_slope);
             double cospolar = std::cos(PI - m_cfg.bridge_slope);
@@ -1622,14 +1586,14 @@ class SLASupportTree::Algorithm {
 
             auto result = solver.optimize_max(
                 [this, dir, jp, gndlvl](double mv) {
-                    Vec3d endp = jp + SQR2 * mv * dir;
-                    endp(Z)    = gndlvl;
-                    return std::sqrt(m_mesh.squared_distance(endp));
+                    Vec3d endpt = jp + SQR2 * mv * dir;
+                    endpt(Z)    = gndlvl;
+                    return std::sqrt(m_mesh.squared_distance(endpt));
                 },
-                initvals(mv), bound(0.0, 2 * min_dist));
+                initvals(mind), bound(0.0, 2 * min_dist));
 
-            mv           = std::get<0>(result.optimum);
-            endp         = jp + SQR2 * mv * dir;
+            mind           = std::get<0>(result.optimum);
+            endp         = jp + SQR2 * mind * dir;
             Vec3d pgnd   = {endp(X), endp(Y), gndlvl};
             can_add_base = result.score > min_dist;
 
@@ -1765,7 +1729,7 @@ public:
                        [this, &nmls, addfn](unsigned fidx, size_t i)
         {
             m_thr();
-
+            
             auto n = nmls.row(Eigen::Index(i));
 
             // for all normals we generate the spherical coordinates and
@@ -1824,19 +1788,20 @@ public:
                     auto oresult = solver.optimize_max(
                         [this, pin_r, w, hp](double plr, double azm)
                         {
-                            auto n = Vec3d(std::cos(azm) * std::sin(plr),
-                                           std::sin(azm) * std::sin(plr),
-                                           std::cos(plr)).normalized();
+                            auto dir = Vec3d(std::cos(azm) * std::sin(plr),
+                                             std::sin(azm) * std::sin(plr),
+                                             std::cos(plr)).normalized();
 
                             double score = pinhead_mesh_intersect(
-                                hp, n, pin_r, m_cfg.head_back_radius_mm, w);
+                                hp, dir, pin_r, m_cfg.head_back_radius_mm, w);
 
                             return score;
                         },
                         initvals(polar, azimuth), // start with what we have
-                        bound(3*PI/4, PI),  // Must not exceed the tilt limit
-                        bound(-PI, PI)      // azimuth can be a full search
-                        );
+                        bound(3 * PI / 4,
+                              PI),     // Must not exceed the tilt limit
+                        bound(-PI, PI) // azimuth can be a full search
+                    );
 
                     if(oresult.score > w) {
                         polar = std::get<0>(oresult.optimum);
@@ -1959,7 +1924,9 @@ public:
         ClusterEl cl_centroids;
         cl_centroids.reserve(m_pillar_clusters.size());
 
-        for(auto& cl : m_pillar_clusters) { m_thr();
+        for(auto& cl : m_pillar_clusters) {
+            m_thr();
+            
             // place all the centroid head positions into the index. We
             // will query for alternative pillar positions. If a sidehead
             // cannot connect to the cluster centroid, we have to search
@@ -1995,7 +1962,8 @@ public:
         // sidepoints with the cluster centroid (which is a ground pillar)
         // or a nearby pillar if the centroid is unreachable.
         size_t ci = 0;
-        for(auto cl : m_pillar_clusters) { m_thr();
+        for(auto cl : m_pillar_clusters) {
+            m_thr();
 
             auto cidx = cl_centroids[ci++];
 
@@ -2449,7 +2417,8 @@ public:
 
         // We will sink the pins into the model surface for a distance of 1/3 of
         // the pin radius
-        for(unsigned i : m_iheadless) { m_thr();
+        for(unsigned i : m_iheadless) {
+            m_thr();
 
             const auto R = double(m_support_pts[i].head_front_radius);
             const double HWIDTH_MM = R/3;
@@ -2652,11 +2621,9 @@ std::vector<ExPolygons> SLASupportTree::slice(
 
         auto bb = pad_mesh.bounding_box();
         auto maxzit = std::upper_bound(grid.begin(), grid.end(), bb.max.z());
-
-        // Just to avoid unwanted huge mem allocation
-        assert(grid.end() - maxzit > 0);
-
-        auto padgrid = reserve_vector<float>(size_t(grid.end() - maxzit));
+        
+        long cap = grid.end() - maxzit;
+        auto padgrid = reserve_vector<float>(size_t(cap > 0 ? cap : 0));
         std::copy(grid.begin(), maxzit, std::back_inserter(padgrid));
 
         TriangleMeshSlicer pad_slicer(&pad_mesh);

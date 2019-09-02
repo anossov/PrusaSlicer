@@ -628,7 +628,7 @@ Polygons concave_hull(const Polygons& polys, double maxd_mm, ThrowOnCancel thr)
                    (const Point& c)
     {
         thr();
-        double dx = x(c) - x(cc), dy = y(c) - y(cc);
+        double dx = c.x() - cc.x(), dy = c.y() - cc.y();
         double l = std::sqrt(dx * dx + dy * dy);
         double nx = dx / l, ny = dy / l;
 
@@ -655,8 +655,8 @@ Polygons concave_hull(const Polygons& polys, double maxd_mm, ThrowOnCancel thr)
         ctour.emplace_back(cc);
 
         Point d(scaled(nx), scaled(ny));
-        ctour.emplace_back(c + Point( -y(d),  x(d) ));
-        ctour.emplace_back(c + Point(  y(d), -x(d) ));
+        ctour.emplace_back(c + Point(-d.y(), d.x()));
+        ctour.emplace_back(c + Point(d.y(), -d.x()));
         offset(r, scaled(1.));
 
         return r;
