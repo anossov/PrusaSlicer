@@ -1120,22 +1120,53 @@ class SLASupportTree::Algorithm {
     ThrowOnCancel m_thr;
 
     // A spatial index to easily find strong pillars to connect to.
-    PointIndex m_pillar_index;
-    mutable ccr::LockingMutex m_pillar_index_mutex;
     
-    template<class...Args> inline void add_to_pillar_index(Args&&...args)
-    {
-        std::lock_guard<ccr::LockingMutex> lck(m_pillar_index_mutex);
-        m_pillar_index.insert(std::forward<Args>(args)...);
-    }
+    class PillarIndex {
+        PointIndex m_index;
+        mutable ccr::LockingMutex m_mutex;
+        
+    public:
+        
+        template<class...Args> inline void guarded_insert(Args&&...args)
+        {
+            std::lock_guard<ccr::LockingMutex> lck(m_mutex);
+            m_index.insert(std::forward<Args>(args)...);
+        }
+        
+        template<class...Args>
+        inline std::vector<PointIndexEl> guarded_query(Args&&...args) const
+        {
+            std::lock_guard<ccr::LockingMutex> lck(m_mutex);
+            return m_index.query(std::forward<Args>(args)...);
+        }
+        
+        template<class...Args> inline void insert(Args&&...args)
+        {
+            m_index.insert(std::forward<Args>(args)...);
+        }
+        
+        template<class...Args>
+        inline std::vector<PointIndexEl> query(Args&&...args) const
+        {
+            return m_index.query(std::forward<Args>(args)...);
+        }
+        
+        template<class Fn> inline void foreach(Fn fn) { m_index.foreach(fn); }
+        template<class Fn> inline void guarded_foreach(Fn fn)
+        {
+            std::lock_guard<ccr::LockingMutex> lck(m_mutex);
+            m_index.foreach(fn);
+        }
+        
+        PointIndex guarded_clone()
+        {
+            std::lock_guard<ccr::LockingMutex> lck(m_mutex);
+            return m_index;
+        }
+        
+    } m_pillar_index;
     
-    template<class...Args>
-    inline std::vector<PointIndexEl> query_pillar_index(Args&&...args) const
-    {
-        std::lock_guard<ccr::LockingMutex> lck(m_pillar_index_mutex);
-        return m_pillar_index.query(std::forward<Args>(args)...);
-    }
-
+    
     inline double ray_mesh_intersect(const Vec3d& s,
                                      const Vec3d& dir)
     {
@@ -1525,10 +1556,7 @@ class SLASupportTree::Algorithm {
     }
 
     bool search_pillar_and_connect(const Head& head) {
-        
-        m_pillar_index_mutex.lock();
-        PointIndex spindex = m_pillar_index;
-        m_pillar_index_mutex.unlock();
+        PointIndex spindex = m_pillar_index.guarded_clone();
 
         long nearest_id = ID_UNSET;
 
@@ -1672,7 +1700,7 @@ class SLASupportTree::Algorithm {
         }
 
         if(pillar_id >= 0) // Save the pillar endpoint in the spatial index
-            add_to_pillar_index(endp, unsigned(pillar_id));
+            m_pillar_index.guarded_insert(endp, unsigned(pillar_id));
     }
 
 public:
@@ -2200,7 +2228,7 @@ public:
 
         for(auto pillid : modelpillars) {
             auto& pillar = m_result.pillar(pillid);
-            add_to_pillar_index(pillar.endpoint(), pillid);
+            m_pillar_index.insert(pillar.endpoint(), pillid);
         }
     }
 
@@ -2259,7 +2287,7 @@ public:
             if(pillar.links >= neighbors) return;
 
             // Query all remaining points within reach
-            auto qres = query_pillar_index([qp, d](const PointIndexEl& e){
+            auto qres = m_pillar_index.query([qp, d](const PointIndexEl& e){
                 return distance(e.first, qp) < d;
             });
 
@@ -2393,7 +2421,7 @@ public:
 
                 if(interconnect(pillar(), p)) {
                     Pillar& pp = m_result.add_pillar(p);
-                    add_to_pillar_index(pp.endpoint(), unsigned(pp.id));
+                    m_pillar_index.insert(pp.endpoint(), unsigned(pp.id));
 
                     m_result.add_junction(s, pillar().r);
                     double t = bridge_mesh_intersect(pillarsp,
