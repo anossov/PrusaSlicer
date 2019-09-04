@@ -54,7 +54,7 @@ Contour3D walls(const Polygon& lower, const Polygon& upper,
     const auto offs = upper.points.size();
 
     // Shorthand for the vertex arrays
-    auto& upoints = upper.points, &lpoints = lower.points;
+    auto& upts = upper.points, &lpts = lower.points;
     auto& rpts = ret.points; auto& ind = ret.indices;
 
     // If the Z levels are flipped, or the offset difference is negative, we
@@ -62,11 +62,11 @@ Contour3D walls(const Polygon& lower, const Polygon& upper,
     bool inverted = upper_z_mm < lower_z_mm || offset_difference_mm < 0;
 
     // Copy the points into the mesh, convert them from 2D to 3D
-    rpts.reserve(upoints.size() + lpoints.size());
-    ind.reserve(2 * upoints.size() + 2 * lpoints.size());
-    for (auto &p : upoints)
+    rpts.reserve(upts.size() + lpts.size());
+    ind.reserve(2 * upts.size() + 2 * lpts.size());
+    for (auto &p : upts)
         rpts.emplace_back(unscaled(p.x()), unscaled(p.y()), upper_z_mm);
-    for (auto &p : lpoints)
+    for (auto &p : lpts)
         rpts.emplace_back(unscaled(p.x()), unscaled(p.y()), lower_z_mm);
 
     // Create pointing indices into vertex arrays. u-upper, l-lower
@@ -524,7 +524,7 @@ Contour3D round_edges(const ExPolygon& base_plate,
 
     if(degrees > 90) {
         double tox = radius_mm - radius_mm*std::cos(degrees * PI / 180 - PI/2);
-        int tos = int(tox / stepx);
+        tos = int(tox / stepx);
 
         for(int i = 1; i <= tos; ++i) {
             thr();
@@ -676,9 +676,9 @@ Polygons concave_hull(const ExPolygons& polys, double maxd, ThrowOnCancel thr)
 }
 
 void pad_plate(const TriangleMesh &      mesh,
-                ExPolygons &              output,
-                const std::vector<float> &heights,
-                ThrowOnCancel             thrfn)
+               ExPolygons &              output,
+               const std::vector<float> &heights,
+               ThrowOnCancel             thrfn)
 {
     if (mesh.empty()) return;
     //    m.require_shared_vertices(); // TriangleMeshSlicer needs this
@@ -687,7 +687,8 @@ void pad_plate(const TriangleMesh &      mesh,
     std::vector<ExPolygons> out; out.reserve(heights.size());
     slicer.slice(heights, 0.f, &out, thrfn);
 
-    size_t count = 0; for(auto& o : out) count += o.size();
+    size_t count = 0;
+    for(auto& o : out) count += o.size();
 
     // Now we have to unify all slice layers which can be an expensive operation
     // so we will try to simplify the polygons
@@ -712,14 +713,10 @@ void pad_plate(const TriangleMesh &mesh,
                 float               layerh,
                 ThrowOnCancel       thrfn)
 {
-    auto bb = mesh.bounding_box();
-    float gnd = float(bb.min(Z));
-    std::vector<float> heights = {float(bb.min(Z))};
-
-    for(float hi = gnd + layerh; hi <= gnd + h; hi += layerh)
-        heights.emplace_back(hi);
-
-    pad_plate(mesh, output, heights, thrfn);
+    float gnd = float(mesh.bounding_box().min(Z));
+    
+    std::vector<float> slicegrid = grid(gnd, gnd + h, layerh);
+    pad_plate(mesh, output, slicegrid, thrfn);
 }
 
 double initial_angle(double r, double px, double py) {
@@ -970,6 +967,49 @@ struct FineCfg {
     }
 };
 
+// Create the spatial index and insert all the support contours
+class SupportIndex {
+    BoxIndex       m_index;
+    ExPolygons     m_polys;
+    const FineCfg &m_cfg;
+    
+public:
+    SupportIndex(const FineCfg &c) : m_cfg(c) {}
+    
+    void add(const ExPolygon &ep) {
+        m_polys.emplace_back(ep);
+        BoundingBox bb(ep);
+        bb.offset(scaled<coordf_t>(m_cfg.thickness));
+        m_index.insert(bb, unsigned(m_index.size()));
+    }
+    
+    bool intersects(const ExPolygon &poly, coord_t offs = 0)
+    {
+        // Create a suitable query bounding box.
+        auto bb = poly.contour.bounding_box();
+        bb.offset(offs);
+        
+        // Query the support cross section polygons for intersection
+        // with the model cross section polygons.
+        std::vector<BoxIndexEl> qres = m_index.query(bb, BoxIndex::qtIntersects);
+        
+        // Now lets examine closely these intersections
+        bool is_overlap = false;
+        auto qit     = qres.begin();
+        while (!is_overlap && qit != qres.end()) {
+            ExPolygons ep = offset_ex(m_polys[qit->second], m_cfg.s_thickness);
+            
+            auto it = ep.begin();
+            while (!is_overlap && it != ep.end())
+                is_overlap = is_overlap || poly.overlaps(*it++);
+            
+            ++qit;
+        }
+        
+        return is_overlap;
+    }  
+};
+
 Contour3D pad_around_model(const ExPolygons &support_contours,
                            const ExPolygons &model_contours,
                            const PadConfig &pcfg)
@@ -992,8 +1032,8 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
     Contour3D     ret;
     auto &        thr = pcfg.throw_on_cancel;
     
-    auto indexed_supports = reserve_vector<ExPolygon>(support_contours.size());
-    for (auto &ep : support_contours) indexed_supports.emplace_back(ep);
+    SupportIndex support_index{C};
+    for (auto &ep : support_contours) support_index.add(ep);
     
     // Create a concave hull from just the support contours. We have to include
     // it amongst the support contours as it is a potential part of them. If
@@ -1002,21 +1042,7 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
     // support contours and that CAN intersect with some of the model contours.
     // So we consider the concave hull (of supports) as part of the supports.
     Polygons concavehs = concave_hull(support_contours, C.mergedist, thr);
-    for (Polygon &p : concavehs) indexed_supports.emplace_back(std::move(p));
-    
-    // Create the index and fill it up with the indexed support contours
-    BoxIndex support_index;
-    for (const ExPolygon &ep : indexed_supports) {
-        BoundingBox bb(ep);
-        bb.offset(C.thickness); // Also mind the thickness of the pad
-        support_index.insert(bb, unsigned(support_index.size()));
-    }
-    
-    // Do we need the brim? If any support contour is outside the model contours
-    // then we will enable it. Also, if force_brim is set in cfg.
-    auto need_brim = [](){
-        return false;
-    };
+    for (Polygon &p : concavehs) support_index.add(ExPolygon(p));
     
     // Create placeholder for the final pad skeleton: the 2D polygon from which
     // the 3D pad is generated.
@@ -1026,12 +1052,53 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
     // Fill the pad skeleton with the support contours which are certainly part
     // of the pad.
     for (auto &ep : support_contours) pad_skeleton.emplace_back(ep.contour);
+    
+    coord_t bboffs = scaled(C.thickness + pcfg.embed_object.object_gap_mm);
+    
+    for (ExPolygon poly : model_contours) {
+        if (!support_index.intersects(poly, bboffs)) continue;
+        
+        // The model silhouette polygon 'poly' HAS an intersection
+        // with the support silhouettes. Include this polygon
+        // in the pad holes with the breaksticks and merge the
+        // original (offsetted) version with the rest of the pad
+        // base plate.
 
-//    for (const ExPolygon &ep : model_contours) {
-//        if (pcfg.embed_object.force_brim || need_brim()) {
-//            pad_skeleton.emplace_back()
-//        }
-//    }
+        // The holes of 'poly' will become positive parts of
+        // the pad, so they have to be checked for
+        // intersections as well and erased if there is no
+        // intersection with the supports
+        auto polyholeit = poly.holes.begin();
+        while (polyholeit != poly.holes.end()) {
+            ExPolygon h(*polyholeit);
+            h.contour.reverse();
+            
+            if (!support_index.intersects(h, -bboffs))
+                polyholeit = poly.holes.erase(polyholeit);
+            else
+                ++polyholeit;
+        }
+
+        ExPolygons poly_gap_offs =
+            offset_ex(poly, scaled<float>(pcfg.embed_object.object_gap_mm));
+        
+        // Punching the breaksticks across the offsetted polygon perimeters
+        auto pad_stickholes = reserve_vector<ExPolygon>(model_contours.size());
+    
+        // Punch the breaksticks
+        for (auto &poffs : poly_gap_offs) {
+            sla::breakstick_holes(
+                poly,
+                pcfg.embed_object.object_gap_mm, // padding
+                pcfg.embed_object.stick_stride_mm,
+                pcfg.embed_object.stick_width_mm,
+                pcfg.embed_object.stick_penetration_mm);
+
+            pad_stickholes.emplace_back(poffs);
+//                basep.emplace_back(poffs.contour);
+            support_index.add(poffs);
+        }
+    }
 
     return ret;   
 }

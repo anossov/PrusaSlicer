@@ -252,15 +252,6 @@ template<class T> struct remove_cvref
 
 template<class T> using remove_cvref_t = typename remove_cvref<T>::type;
 
-//template<template<class> class C, class T>
-//class Container : public C<remove_cvref_t<T>>
-//{
-//public:
-//    explicit Container(size_t count, T &&initval)
-//        : C<remove_cvref_t<T>>(count, initval)
-//    {}
-//};
-
 template<class T> using DefaultContainer = std::vector<T>;
 
 /// Exactly like Matlab https://www.mathworks.com/help/matlab/ref/linspace.html
