@@ -967,44 +967,33 @@ struct FineCfg {
     }
 };
 
-// Create the spatial index and insert all the support contours
-class SupportIndex {
+// A helper class for storing polygons and maintaining a spatial index of the
+// their bounding boxes.
+class Intersector {
     BoxIndex       m_index;
     ExPolygons     m_polys;
-    const FineCfg &m_cfg;
     
 public:
-    SupportIndex(const FineCfg &c) : m_cfg(c) {}
     
+    // Add a new polygon to the index
     void add(const ExPolygon &ep) {
         m_polys.emplace_back(ep);
-        BoundingBox bb(ep);
-        bb.offset(scaled<coordf_t>(m_cfg.thickness));
-        m_index.insert(bb, unsigned(m_index.size()));
+        m_index.insert(BoundingBox{ep}, unsigned(m_index.size()));
     }
     
-    bool intersects(const ExPolygon &poly, coord_t offs = 0)
+    // Check an arbitrary polygon for intersection with the indexed polygons
+    bool intersects(const ExPolygon &poly)
     {
         // Create a suitable query bounding box.
         auto bb = poly.contour.bounding_box();
-        bb.offset(offs);
         
-        // Query the support cross section polygons for intersection
-        // with the model cross section polygons.
         std::vector<BoxIndexEl> qres = m_index.query(bb, BoxIndex::qtIntersects);
         
-        // Now lets examine closely these intersections
+        // Now check intersections on the actual polygons (not just the boxes)
         bool is_overlap = false;
         auto qit     = qres.begin();
-        while (!is_overlap && qit != qres.end()) {
-            ExPolygons ep = offset_ex(m_polys[qit->second], m_cfg.s_thickness);
-            
-            auto it = ep.begin();
-            while (!is_overlap && it != ep.end())
-                is_overlap = is_overlap || poly.overlaps(*it++);
-            
-            ++qit;
-        }
+        while (!is_overlap && qit != qres.end())
+            is_overlap = is_overlap || poly.overlaps(m_polys[(qit++)->second]);
         
         return is_overlap;
     }  
@@ -1032,8 +1021,11 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
     Contour3D     ret;
     auto &        thr = pcfg.throw_on_cancel;
     
-    SupportIndex support_index{C};
-    for (auto &ep : support_contours) support_index.add(ep);
+    Intersector intersector;
+    for (auto &ep : support_contours)  {
+        ExPolygons tmp = offset_ex(ep, C.s_thickness);
+        for (auto &t : tmp) intersector.add(t);
+    }
     
     // Create a concave hull from just the support contours. We have to include
     // it amongst the support contours as it is a potential part of them. If
@@ -1042,66 +1034,135 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
     // support contours and that CAN intersect with some of the model contours.
     // So we consider the concave hull (of supports) as part of the supports.
     Polygons concavehs = concave_hull(support_contours, C.mergedist, thr);
-    for (Polygon &p : concavehs) support_index.add(ExPolygon(p));
+    for (Polygon &p : concavehs) intersector.add(ExPolygon(p));
     
     // Create placeholder for the final pad skeleton: the 2D polygon from which
     // the 3D pad is generated.
-    auto pad_skeleton = reserve_vector<ExPolygon>(support_contours.size() +
-                                                  model_contours.size());
+    auto pad_outer_skeleton = reserve_vector<ExPolygon>(
+        support_contours.size() + model_contours.size());
     
+    ExPolygons pad_inner_skeleton;
+    ExPolygons pad_cut_polys;
+
     // Fill the pad skeleton with the support contours which are certainly part
     // of the pad.
-    for (auto &ep : support_contours) pad_skeleton.emplace_back(ep.contour);
+    for (auto &ep : support_contours)
+        pad_outer_skeleton.emplace_back(ep.contour);
     
-    coord_t bboffs = scaled(C.thickness + pcfg.embed_object.object_gap_mm);
-    
-    for (ExPolygon poly : model_contours) {
-        if (!support_index.intersects(poly, bboffs)) continue;
-        
-        // The model silhouette polygon 'poly' HAS an intersection
-        // with the support silhouettes. Include this polygon
-        // in the pad holes with the breaksticks and merge the
-        // original (offsetted) version with the rest of the pad
-        // base plate.
+    coord_t s_embed_object_gap = scaled(pcfg.embed_object.object_gap_mm);
 
+    for (const ExPolygon &poly : model_contours) {
         // The holes of 'poly' will become positive parts of
         // the pad, so they have to be checked for
         // intersections as well and erased if there is no
         // intersection with the supports
-        auto polyholeit = poly.holes.begin();
-        while (polyholeit != poly.holes.end()) {
-            ExPolygon h(*polyholeit);
-            h.contour.reverse();
-            
-            if (!support_index.intersects(h, -bboffs))
-                polyholeit = poly.holes.erase(polyholeit);
-            else
-                ++polyholeit;
-        }
-
-        ExPolygons poly_gap_offs =
-            offset_ex(poly, scaled<float>(pcfg.embed_object.object_gap_mm));
         
-        // Punching the breaksticks across the offsetted polygon perimeters
-        auto pad_stickholes = reserve_vector<ExPolygon>(model_contours.size());
-    
-        // Punch the breaksticks
-        for (auto &poffs : poly_gap_offs) {
-            sla::breakstick_holes(
-                poly,
-                pcfg.embed_object.object_gap_mm, // padding
-                pcfg.embed_object.stick_stride_mm,
-                pcfg.embed_object.stick_width_mm,
-                pcfg.embed_object.stick_penetration_mm);
-
-            pad_stickholes.emplace_back(poffs);
-//                basep.emplace_back(poffs.contour);
-            support_index.add(poffs);
+        for (const Polygon &hole : poly.holes) {
+            ExPolygon holepoly(hole);
+            holepoly.contour.reverse();
+            
+            if (intersector.intersects(holepoly)) {
+                auto inners = offset_ex(holepoly, -s_embed_object_gap);
+                for (ExPolygon &inner : inners)
+                    pad_inner_skeleton.emplace_back(inner);
+                
+            } else pad_cut_polys.emplace_back(holepoly);
         }
+        
+        ExPolygons poly_gap_offs = offset_ex(poly, s_embed_object_gap);
+        for (auto &poffs : poly_gap_offs) {
+            if (intersector.intersects(poffs)) {
+                pad_outer_skeleton.emplace_back(poffs);
+                sla::breakstick_holes(
+                    poffs,
+                    pcfg.embed_object.object_gap_mm, // padding
+                    pcfg.embed_object.stick_stride_mm,
+                    pcfg.embed_object.stick_width_mm,
+                    pcfg.embed_object.stick_penetration_mm);
+                
+                pad_cut_polys.emplace_back(poffs);
+            }
+        }
+    }
+    
+    Polygons outer_pad = concave_hull(pad_outer_skeleton, C.mergedist, thr);
+    
+    for (Polygon &p : outer_pad) {
+        coord_t   delta = C.s_safety_dist + C.s_wingdist + C.s_thickness;
+        offset(p, 2 * delta);
+        offset(p, -delta);
+    }
+    
+    ExPolygons outer_pad_with_holes = diff_ex(outer_pad,
+                                              to_polygons(pad_cut_polys));
+    
+    for (ExPolygon &pad_part : outer_pad_with_holes) {
+        ExPolygon top_poly(pad_part);
+        ExPolygon bottom_poly(top_poly);
+        offset(bottom_poly, -C.s_bottom_offs);
+        
+        ExPolygon middle_base(top_poly);
+        ExPolygon inner_base(top_poly);
+        ExPolygon outer_base(top_poly);
+        
+        if (C.wingheight > 0) { // If pad cavity is requested
+            offset(inner_base,  -C.s_thickness - C.s_wingdist - C.s_eradius);
+            offset(middle_base, -C.s_thickness);
+            
+            top_poly.holes.emplace_back(middle_base.contour);
+            auto &tph = top_poly.holes.back().points;
+            std::reverse(tph.begin(), tph.end());
+        }
+        
+        ret.merge(walls(outer_base.contour, bottom_poly.contour, 0,
+                        -C.fullheight, C.bottom_offs, thr));
+        
+        if (C.wingheight > 0) {
+            // Next is the cavity walls connecting to the top plate's
+            // artificially created hole.
+            ret.merge(walls(inner_base.contour, middle_base.contour,
+                            -C.wingheight, 0, -C.wingdist, thr));
+        }
+        
+        for (auto &h : bottom_poly.holes)
+            ret.merge(walls(h, h, 0, -C.fullheight, 0, thr));
+        
+        ret.merge(triangulate_expolygon_3d(bottom_poly, -C.fullheight, true));
+        ret.merge(triangulate_expolygon_3d(top_poly));
+        if (C.wingheight > 0)
+            ret.merge(triangulate_expolygon_3d(inner_base, -C.wingheight));
+    }
+    
+    ExPolygons inner_pad_with_holes = diff_ex(to_polygons(pad_inner_skeleton),
+                                              to_polygons(pad_cut_polys));
+    
+    for (const ExPolygon &pad_part : inner_pad_with_holes) {
+        ret.merge(walls(pad_part.contour, pad_part.contour, 0, -C.fullheight,
+                        C.bottom_offs, thr));
+
+        for (auto &h : pad_part.holes)
+            ret.merge(walls(h, h, 0, -C.fullheight, 0, thr));
+        
+        ret.merge(triangulate_expolygon_3d(pad_part, -C.fullheight, true));
+        ret.merge(triangulate_expolygon_3d(pad_part));
     }
 
     return ret;   
 }
+
+
+//// Punch the breaksticks
+//for (auto &poffs : poly_gap_offs) {
+//    //            sla::breakstick_holes(
+//    //                poly,
+//    //                pcfg.embed_object.object_gap_mm, // padding
+//    //                pcfg.embed_object.stick_stride_mm,
+//    //                pcfg.embed_object.stick_width_mm,
+//    //                pcfg.embed_object.stick_penetration_mm);
+    
+//    pad_outer_skeleton.emplace_back(poffs);
+//    support_index.add(poffs);
+//}
 
 Contour3D pad_below_model(const ExPolygons &support_contours,
                           const ExPolygons &model_contours,
