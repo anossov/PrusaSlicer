@@ -489,7 +489,6 @@ void pad_plate(const TriangleMesh &      mesh,
                ThrowOnCancel             thrfn)
 {
     if (mesh.empty()) return;
-    //    m.require_shared_vertices(); // TriangleMeshSlicer needs this
     TriangleMeshSlicer slicer(&mesh);
     
     auto out = reserve_vector<ExPolygons>(heights.size());

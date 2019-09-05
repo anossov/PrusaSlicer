@@ -752,19 +752,12 @@ void _traverse_pt(const ClipperLib::PolyNodes &nodes, Polygons *retval)
 template<e_ordering o>
 void _traverse_pt(const ClipperLib::PolyNode *tree, ExPolygons *retval)
 {
-    if (!retval) return;
+    if (!retval || !tree) return;
     
     ExPolygons &retv = *retval;
     
-    // Now we will recursively traverse the polygon tree and serialize it
-    // into an ExPolygon with holes. The polygon tree has the clipper-ish
-    // PolyTree structure which alternates its nodes as contours and holes
-    
-    // A "declaration" of function for traversing leafs which are holes
     std::function<void(const ClipperLib::PolyNode*, ExPolygon&)> hole_fn;
     
-    // Process polygon which calls processHoles which than calls processPoly
-    // again until no leafs are left.
     auto contour_fn = [&retv, &hole_fn](const ClipperLib::PolyNode *pptr) {
         ExPolygon poly;
         poly.contour.points = ClipperPath_to_Slic3rPolygon(pptr->Contour);
@@ -773,7 +766,6 @@ void _traverse_pt(const ClipperLib::PolyNode *tree, ExPolygons *retval)
         retv.push_back(poly);
     };
     
-    // Body of the processHole function
     hole_fn = [&contour_fn](const ClipperLib::PolyNode *pptr, ExPolygon& poly)
     {   
         poly.holes.emplace_back();
@@ -781,8 +773,7 @@ void _traverse_pt(const ClipperLib::PolyNode *tree, ExPolygons *retval)
         foreach_node<o>(pptr->Childs, contour_fn);
     };
     
-    // Here is the actual traverse
-    foreach_node<o>(tree->Childs, contour_fn);
+    contour_fn(tree);
 }
 
 template<e_ordering o>
