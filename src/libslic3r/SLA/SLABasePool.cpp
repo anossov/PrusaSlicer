@@ -184,204 +184,12 @@ Contour3D walls(const Polygon& lower, const Polygon& upper,
     return ret;
 }
 
-/// Offsetting with clipper and smoothing the edges into a curvature.
-void offset(ExPolygon& sh, coord_t distance, bool edgerounding = true) {
-    using ClipperLib::ClipperOffset;
-    using ClipperLib::jtRound;
-    using ClipperLib::jtMiter;
-    using ClipperLib::etClosedPolygon;
-    using ClipperLib::Paths;
-    using ClipperLib::Path;
-
-    auto&& ctour = Slic3rMultiPoint_to_ClipperPath(sh.contour);
-    auto&& holes = Slic3rMultiPoints_to_ClipperPaths(sh.holes);
-
-    // If the input is not at least a triangle, we can not do this algorithm
-    if(ctour.size() < 3 ||
-       std::any_of(holes.begin(), holes.end(),
-                   [](const Path& p) { return p.size() < 3; })
-            ) {
-        BOOST_LOG_TRIVIAL(error) << "Invalid geometry for offsetting!";
-        return;
-    }
-
-    auto jointype = edgerounding? jtRound : jtMiter;
-
-    ClipperOffset offs;
-    offs.ArcTolerance = scaled<double>(0.01);
-    Paths result;
-    offs.AddPath(ctour, jointype, etClosedPolygon);
-    offs.AddPaths(holes, jointype, etClosedPolygon);
-    offs.Execute(result, static_cast<double>(distance));
-
-    // Offsetting reverts the orientation and also removes the last vertex
-    // so boost will not have a closed polygon.
-
-    bool found_the_contour = false;
-    sh.holes.clear();
-    for(auto& r : result) {
-        if(ClipperLib::Orientation(r)) {
-            // We don't like if the offsetting generates more than one contour
-            // but throwing would be an overkill. Instead, we should warn the
-            // caller about the inability to create correct geometries
-            if(!found_the_contour) {
-                auto rr = ClipperPath_to_Slic3rPolygon(r);
-                sh.contour.points.swap(rr.points);
-                found_the_contour = true;
-            } else {
-                BOOST_LOG_TRIVIAL(warning)
-                        << "Warning: offsetting result is invalid!";
-            }
-        } else {
-            // TODO If there are multiple contours we can't be sure which hole
-            // belongs to the first contour. (But in this case the situation is
-            // bad enough to let it go...)
-            sh.holes.emplace_back(ClipperPath_to_Slic3rPolygon(r));
-        }
-    }
-}
-
-void offset(Polygon &sh, coord_t distance, bool edgerounding = true)
+Contour3D inline straight_walls(const Polygon &plate,
+                                double         lower_z_mm,
+                                double         upper_z_mm,
+                                ThrowOnCancel  thr)
 {
-    using ClipperLib::ClipperOffset;
-    using ClipperLib::jtRound;
-    using ClipperLib::jtMiter;
-    using ClipperLib::etClosedPolygon;
-    using ClipperLib::Paths;
-    using ClipperLib::Path;
-
-    auto &&ctour = Slic3rMultiPoint_to_ClipperPath(sh);
-
-    // If the input is not at least a triangle, we can not do this algorithm
-    if (ctour.size() < 3) {
-        BOOST_LOG_TRIVIAL(error) << "Invalid geometry for offsetting!";
-        return;
-    }
-
-    ClipperOffset offs;
-    offs.ArcTolerance = 0.01 * scaled(1.);
-    Paths result;
-    offs.AddPath(ctour, edgerounding ? jtRound : jtMiter, etClosedPolygon);
-    offs.Execute(result, static_cast<double>(distance));
-
-    // Offsetting reverts the orientation and also removes the last vertex
-    // so boost will not have a closed polygon.
-
-    bool found_the_contour = false;
-    for (auto &r : result) {
-        if (ClipperLib::Orientation(r)) {
-            // We don't like if the offsetting generates more than one contour
-            // but throwing would be an overkill. Instead, we should warn the
-            // caller about the inability to create correct geometries
-            if (!found_the_contour) {
-                auto rr = ClipperPath_to_Slic3rPolygon(r);
-                sh.points.swap(rr.points);
-                found_the_contour = true;
-            } else {
-                BOOST_LOG_TRIVIAL(warning)
-                    << "Warning: offsetting result is invalid!";
-            }
-        }
-    }
-}
-
-/// Unification of polygons (with clipper) preserving holes as well.
-ExPolygons unify(const ExPolygons& shapes) {
-    using ClipperLib::ptSubject;
-
-    ExPolygons retv;
-
-    bool closed = true;
-    bool valid = true;
-
-    ClipperLib::Clipper clipper;
-
-    for(auto& path : shapes) {
-        auto clipperpath = Slic3rMultiPoint_to_ClipperPath(path.contour);
-
-        if(!clipperpath.empty())
-            valid &= clipper.AddPath(clipperpath, ptSubject, closed);
-
-        auto clipperholes = Slic3rMultiPoints_to_ClipperPaths(path.holes);
-
-        for(auto& hole : clipperholes) {
-            if(!hole.empty())
-                valid &= clipper.AddPath(hole, ptSubject, closed);
-        }
-    }
-
-    if(!valid) BOOST_LOG_TRIVIAL(warning) << "Unification of invalid shapes!";
-
-    ClipperLib::PolyTree result;
-    clipper.Execute(ClipperLib::ctUnion, result, ClipperLib::pftNonZero);
-
-    retv.reserve(static_cast<size_t>(result.Total()));
-
-    // Now we will recursively traverse the polygon tree and serialize it
-    // into an ExPolygon with holes. The polygon tree has the clipper-ish
-    // PolyTree structure which alternates its nodes as contours and holes
-
-    // A "declaration" of function for traversing leafs which are holes
-    std::function<void(ClipperLib::PolyNode*, ExPolygon&)> processHole;
-
-    // Process polygon which calls processHoles which than calls processPoly
-    // again until no leafs are left.
-    auto processPoly = [&retv, &processHole](ClipperLib::PolyNode *pptr) {
-        ExPolygon poly;
-        poly.contour.points = ClipperPath_to_Slic3rPolygon(pptr->Contour);
-        for(auto h : pptr->Childs) { processHole(h, poly); }
-        retv.push_back(poly);
-    };
-
-    // Body of the processHole function
-    processHole = [&processPoly](ClipperLib::PolyNode *pptr, ExPolygon& poly)
-    {
-        poly.holes.emplace_back();
-        poly.holes.back().points = ClipperPath_to_Slic3rPolygon(pptr->Contour);
-        for(auto c : pptr->Childs) processPoly(c);
-    };
-
-    // Wrapper for traversing.
-    auto traverse = [&processPoly] (ClipperLib::PolyNode *node)
-    {
-        for(auto ch : node->Childs) {
-            processPoly(ch);
-        }
-    };
-
-    // Here is the actual traverse
-    traverse(&result);
-
-    return retv;
-}
-
-Polygons unify(const Polygons& shapes) {
-    using ClipperLib::ptSubject;
-
-    bool closed = true;
-    bool valid = true;
-
-    ClipperLib::Clipper clipper;
-
-    for(auto& path : shapes) {
-        auto clipperpath = Slic3rMultiPoint_to_ClipperPath(path);
-
-        if(!clipperpath.empty())
-            valid &= clipper.AddPath(clipperpath, ptSubject, closed);
-    }
-
-    if(!valid) BOOST_LOG_TRIVIAL(warning) << "Unification of invalid shapes!";
-
-    ClipperLib::Paths result;
-    clipper.Execute(ClipperLib::ctUnion, result, ClipperLib::pftNonZero);
-
-    Polygons ret;
-    for (ClipperLib::Path &p : result) {
-        Polygon pp = ClipperPath_to_Slic3rPolygon(p);
-        if (!pp.is_clockwise()) ret.emplace_back(std::move(pp));
-    }
-
-    return ret;
+    return walls(plate, plate, lower_z_mm, upper_z_mm, 0 /*offset_diff*/, thr);
 }
 
 // Function to cut tiny connector cavities for a given polygon. The input poly
@@ -602,7 +410,7 @@ Polygons concave_hull(const Polygons& polys, double maxd_mm, ThrowOnCancel thr)
 
     const double max_dist = scaled(maxd_mm);
 
-    Polygons punion = unify(polys);   // could be redundant
+    Polygons punion = union_(polys);   // could be redundant
 
     if(punion.size() == 1) return punion;
 
@@ -663,7 +471,7 @@ Polygons concave_hull(const Polygons& polys, double maxd_mm, ThrowOnCancel thr)
     });
 
     // This is unavoidable...
-    punion = unify(punion);
+    punion = union_(punion);
 
     return punion;
 }
@@ -683,8 +491,8 @@ void pad_plate(const TriangleMesh &      mesh,
     if (mesh.empty()) return;
     //    m.require_shared_vertices(); // TriangleMeshSlicer needs this
     TriangleMeshSlicer slicer(&mesh);
-
-    std::vector<ExPolygons> out; out.reserve(heights.size());
+    
+    auto out = reserve_vector<ExPolygons>(heights.size());
     slicer.slice(heights, 0.f, &out, thrfn);
 
     size_t count = 0;
@@ -692,14 +500,14 @@ void pad_plate(const TriangleMesh &      mesh,
 
     // Now we have to unify all slice layers which can be an expensive operation
     // so we will try to simplify the polygons
-    ExPolygons tmp; tmp.reserve(count);
+    auto tmp = reserve_vector<ExPolygon>(count);
     for(ExPolygons& o : out)
         for(ExPolygon& e : o) {
             auto&& exss = e.simplify(scaled<double>(0.1));
             for(ExPolygon& ep : exss) tmp.emplace_back(std::move(ep));
         }
 
-    ExPolygons utmp = unify(tmp);
+    ExPolygons utmp = union_ex(tmp);
 
     for(auto& o : utmp) {
         auto&& smp = o.simplify(scaled<double>(0.1));
@@ -718,212 +526,6 @@ void pad_plate(const TriangleMesh &mesh,
     std::vector<float> slicegrid = grid(gnd, gnd + h, layerh);
     pad_plate(mesh, output, slicegrid, thrfn);
 }
-
-double initial_angle(double r, double px, double py) {
-    // now we will calculate the angle or portion of the circle from
-    // pi/2 that will connect perfectly with the bottom plate.
-    // this is a tangent point calculation problem and the equation can
-    // be found for example here:
-    // http://www.ambrsoft.com/TrigoCalc/Circles2/CirclePoint/CirclePointDistance.htm
-    // the y coordinate would be:
-    // y = cy + (r^2*py - r*px*sqrt(px^2 + py^2 - r^2) / (px^2 + py^2)
-    // where px and py are the coordinates of the point outside the circle
-    // cx and cy are the circle center, r is the radius
-    // We place the circle center to (0, 0) in the calculation the make
-    // things easier.
-    // to get the angle we use arcsin function and subtract 90 degrees then
-    // flip the sign to get the right input to the round_edge function.
-
-    double cy = 0;
-    double cx = 0;
-
-    double pxcx = px - cx;
-    double pycy = py - cy;
-    double b_2 = pxcx*pxcx + pycy*pycy;
-    double r_2 = r*r;
-    double D = std::sqrt(b_2 - r_2);
-    double vy = (r_2*pycy - r*pxcx*D) / b_2;
-    return -(std::asin(vy/r) * 180 / PI - 90);
-}
-
-//Contour3D create_base_pool(const Polygons &ground_layer,
-//                           const ExPolygons &obj_self_pad = {},
-//                           const PoolConfig& cfg = PoolConfig())
-//{
-//    // for debugging:
-//    // Benchmark bench;
-//    // bench.start();
-
-//    double mergedist = 2*(1.8*cfg.min_wall_thickness_mm + 4*cfg.edge_radius_mm)+
-//                       cfg.max_merge_distance_mm;
-
-//    // Here we get the base polygon from which the pad has to be generated.
-//    // We create an artificial concave hull from this polygon and that will
-//    // serve as the bottom plate of the pad. We will offset this concave hull
-//    // and then offset back the result with clipper with rounding edges ON. This
-//    // trick will create a nice rounded pad shape.
-////    Polygons concavehs = concave_hull(ground_layer, mergedist, cfg.throw_on_cancel);
-//    Polygons concavehs = union_(ground_layer);
-
-//    const double thickness      = cfg.min_wall_thickness_mm;
-//    const double wingheight     = cfg.min_wall_height_mm;
-//    const double fullheight     = wingheight + thickness;
-//    const double slope          = cfg.wall_slope;
-//    const double wingdist       = wingheight / std::tan(slope);
-//    const double bottom_offs    = (thickness + wingheight) / std::tan(slope);
-
-//    // scaled values
-//    const coord_t s_thickness   = scaled(thickness);
-//    const coord_t s_eradius     = scaled(cfg.edge_radius_mm);
-//    const coord_t s_safety_dist = 2*s_eradius + coord_t(0.8*s_thickness);
-//    const coord_t s_wingdist    = scaled(wingdist);
-//    const coord_t s_bottom_offs = scaled(bottom_offs);
-
-//    auto& thrcl = cfg.throw_on_cancel;
-
-//    Contour3D pool;
-
-//    for(Polygon& concaveh : concavehs) {
-//        if(concaveh.points.empty()) continue;
-
-//        // Here lies the trick that does the smoothing only with clipper offset
-//        // calls. The offset is configured to round edges. Inner edges will
-//        // be rounded because we offset twice: ones to get the outer (top) plate
-//        // and again to get the inner (bottom) plate
-//        auto outer_base = concaveh;
-//        offset(outer_base, s_safety_dist + s_wingdist + s_thickness);
-
-//        ExPolygon bottom_poly(outer_base);
-//        offset(bottom_poly, -s_bottom_offs);
-
-//        // Punching a hole in the top plate for the cavity
-//        ExPolygon top_poly(outer_base);
-//        ExPolygon middle_base;
-//        ExPolygon inner_base;
-
-//        if(wingheight > 0) {
-//            inner_base.contour = outer_base;
-//            offset(inner_base, -(s_thickness + s_wingdist + s_eradius));
-
-//            middle_base.contour = outer_base;
-//            offset(middle_base, -s_thickness);
-//            top_poly.holes.emplace_back(middle_base.contour);
-//            auto& tph = top_poly.holes.back().points;
-//            std::reverse(tph.begin(), tph.end());
-//        }
-
-//        ExPolygon ob(outer_base);
-//        double wh  = 0;  // placeholder for the height level when rounding ends
-//        double r   = cfg.edge_radius_mm;
-//        double phi = initial_angle(r, thickness + wingdist, r - fullheight);
-
-//        // Generate the smoothed edge geometry
-//        if(s_eradius > 0) pool.merge(round_edges(ob,
-//                               r,
-//                               phi,
-//                               0,    // z position of the input plane
-//                               true,
-//                               thrcl,
-//                               ob, wh)); // output vars
-
-//        // Now that we have the rounded edge connecting the top plate with
-//        // the outer side walls, we can generate and merge the sidewall geometry
-//        // Notice we hand over ob and wh which are the polygons after the
-//        // previous (possible) round_edges call. It modifies the upper polygon
-//        // and the its height level to which the wall is connected.
-//        pool.merge(walls(ob.contour, bottom_poly.contour, wh, -fullheight,
-//                         bottom_offs, thrcl));
-
-//        if(wingheight > 0) {
-//            // Generate the smoothed edge geometry
-//            wh = 0;
-//            ob = middle_base;
-//            if(s_eradius) pool.merge(round_edges(middle_base,
-//                                   r,
-//                                   phi - 90, // from tangent lines
-//                                   0,  // z position of the input plane
-//                                   false,
-//                                   thrcl,
-//                                   ob, wh));
-
-//            // Next is the cavity walls connecting to the top plate's
-//            // artificially created hole.
-//            pool.merge(walls(inner_base.contour, ob.contour, -wingheight,
-//                             wh, -wingdist, thrcl));
-//        }
-
-//        if (cfg.embed_object) {
-
-//            // Cut out the object bottom silhouette from the current pad part
-//            ExPolygons bttms = diff_ex(to_polygons(bottom_poly),
-//                                       to_polygons(obj_self_pad));
-
-//            // This would mean that the part we want to cut out from the pad
-//            // completely overlaps the pad.
-//            assert(!bttms.empty());
-
-//            // Make sure the biggest comes first
-//            std::sort(bttms.begin(), bttms.end(),
-//                      [](const ExPolygon& e1, const ExPolygon& e2) {
-//                          return e1.contour.area() > e2.contour.area();
-//                      });
-
-//            // The top polygon should be an inflated or identical polygon with
-//            // the bottom_poly so we can spare the diff_ex
-//            if(wingheight > 0) inner_base.holes = bttms.front().holes;
-//            else top_poly.holes = bttms.front().holes;
-
-//            auto straight_walls =
-//                [&pool](const Polygon &cntr, coord_t z_low, coord_t z_high) {
-
-//                auto lines = cntr.lines();
-
-//                for (auto &l : lines) {
-//                    auto s = coord_t(pool.points.size());
-//                    auto& pts = pool.points;
-//                    pts.emplace_back(unscale(l.a.x(), l.a.y(), z_low));
-//                    pts.emplace_back(unscale(l.b.x(), l.b.y(), z_low));
-//                    pts.emplace_back(unscale(l.a.x(), l.a.y(), z_high));
-//                    pts.emplace_back(unscale(l.b.x(), l.b.y(), z_high));
-
-//                    pool.indices.emplace_back(s, s + 1, s + 3);
-//                    pool.indices.emplace_back(s, s + 3, s + 2);
-//                }
-//            };
-
-//            coord_t z_lo = -scaled(fullheight), z_hi = -scaled(wingheight);
-
-//            // triangulate the final bottom poly and the hole walls
-//            for (ExPolygon &ep : bttms) {
-//                pool.merge(triangulate_expolygon_3d(ep, -fullheight, true));
-//                for (auto &h : ep.holes) straight_walls(h, z_lo, z_hi);
-//            }
-
-//            // Skip the outer contour and triangulate all other contour walls.
-//            // The outer contour wall might be sloped, that is taken care off.
-//            for (auto it = std::next(bttms.begin()); it != bttms.end(); ++it) {
-//                pool.merge(triangulate_expolygon_3d(*it, -wingheight));
-//                straight_walls(it->contour, z_lo, z_hi);
-//            }
-
-//        } else {
-//            // Now we need to triangulate the top and bottom plates as well as
-//            // the cavity bottom plate which is the same as the bottom plate
-//            // but it is elevated by the thickness.
-
-//            pool.merge(triangulate_expolygon_3d(bottom_poly, -fullheight, true));
-//        }
-
-//        pool.merge(triangulate_expolygon_3d(top_poly));
-
-//        if(wingheight > 0)
-//            pool.merge(triangulate_expolygon_3d(inner_base, -wingheight));
-
-//    }
-
-//    return pool;
-//}
-
 
 namespace {
 
@@ -946,6 +548,7 @@ struct FineCfg {
     coord_t s_wingdist;
     coord_t s_wingheight;
     coord_t s_bottom_offs;
+    coord_t s_waffle_offs;
     
     FineCfg(const PadConfig &cfg) {
         thickness   = cfg.min_wall_thickness_mm;
@@ -963,12 +566,14 @@ struct FineCfg {
         s_wingheight  = scaled(wingheight);
         s_bottom_offs = scaled(bottom_offs);
         
+        s_waffle_offs = s_safety_dist + s_wingdist + s_thickness;
+        
         mergedist = 2 * (1.8 * thickness + 4 * radius) + cfg.max_merge_dist_mm;
     }
 };
 
-// A helper class for storing polygons and maintaining a spatial index of the
-// their bounding boxes.
+// A helper class for storing polygons and maintaining a spatial index of their
+// bounding boxes.
 class Intersector {
     BoxIndex       m_index;
     ExPolygons     m_polys;
@@ -991,7 +596,7 @@ public:
         
         // Now check intersections on the actual polygons (not just the boxes)
         bool is_overlap = false;
-        auto qit     = qres.begin();
+        auto qit        = qres.begin();
         while (!is_overlap && qit != qres.end())
             is_overlap = is_overlap || poly.overlaps(m_polys[(qit++)->second]);
         
@@ -999,115 +604,68 @@ public:
     }  
 };
 
-Contour3D pad_around_model(const ExPolygons &support_contours,
-                           const ExPolygons &model_contours,
-                           const PadConfig &pcfg)
+ClipperLib::Paths fast_offset(const ClipperLib::Paths &paths,
+                              coord_t                  delta,
+                              ClipperLib::JoinType     jointype)
 {
-    // We need to merge the support and the model contours in a special way in
-    // which the model contours have to be substracted from the support
-    // contours. The pad has to have a hole in which the model can fit
-    // perfectly (thus the substraction -- diff_ex). Also, the pad has to be
-    // eliminated from areas where there is no need for a pad, due to missing
-    // supports.
+    using ClipperLib::ClipperOffset;
+    using ClipperLib::etClosedPolygon;
+    using ClipperLib::Paths;
+    using ClipperLib::Path;
     
-    // First we will create a spatial index from the support contours to be
-    // able to efficiently find intersections with the model contours. Contours
-    // of the model which do not have any intersection with the support
-    // contours have to be removed. (e.g. a hole in the model cntr which does
-    // not host any supports or supports are not present outside the model only
-    // in some of its holes)
-
-    const FineCfg C(pcfg);
-    Contour3D     ret;
-    auto &        thr = pcfg.throw_on_cancel;
+    ClipperOffset offs;
+    offs.ArcTolerance = scaled<double>(0.01);
     
-    Intersector intersector;
-    for (auto &ep : support_contours)  {
-        ExPolygons tmp = offset_ex(ep, C.s_thickness);
-        for (auto &t : tmp) intersector.add(t);
-    }
-    
-    // Create a concave hull from just the support contours. We have to include
-    // it amongst the support contours as it is a potential part of them. If
-    // some model contour does not intersect with any support contour and it is
-    // removed from the pad skeleton, then a concave hull is genrated from the
-    // support contours and that CAN intersect with some of the model contours.
-    // So we consider the concave hull (of supports) as part of the supports.
-    Polygons concavehs = concave_hull(support_contours, C.mergedist, thr);
-    for (Polygon &p : concavehs) intersector.add(ExPolygon(p));
-    
-    // Create placeholder for the final pad skeleton: the 2D polygon from which
-    // the 3D pad is generated.
-    auto pad_outer_skeleton = reserve_vector<ExPolygon>(
-        support_contours.size() + model_contours.size());
-    
-    ExPolygons pad_inner_skeleton;
-    ExPolygons pad_cut_polys;
-
-    // Fill the pad skeleton with the support contours which are certainly part
-    // of the pad.
-    for (auto &ep : support_contours)
-        pad_outer_skeleton.emplace_back(ep.contour);
-    
-    coord_t s_embed_object_gap = scaled(pcfg.embed_object.object_gap_mm);
-
-    for (const ExPolygon &poly : model_contours) {
-        // The holes of 'poly' will become positive parts of
-        // the pad, so they have to be checked for
-        // intersections as well and erased if there is no
-        // intersection with the supports
-        
-        for (const Polygon &hole : poly.holes) {
-            ExPolygon holepoly(hole);
-            holepoly.contour.reverse();
-            
-            if (intersector.intersects(holepoly)) {
-                auto inners = offset_ex(holepoly, -s_embed_object_gap);
-                for (ExPolygon &inner : inners)
-                    pad_inner_skeleton.emplace_back(inner);
-                
-            } else pad_cut_polys.emplace_back(holepoly);
+    for (auto &p : paths)
+        // If the input is not at least a triangle, we can not do this algorithm
+        if(p.size() < 3) {
+            BOOST_LOG_TRIVIAL(error) << "Invalid geometry for offsetting!";
+            return {};
         }
         
-        ExPolygons poly_gap_offs = offset_ex(poly, s_embed_object_gap);
-        for (auto &poffs : poly_gap_offs) {
-            if (intersector.intersects(poffs)) {
-                pad_outer_skeleton.emplace_back(poffs);
-                sla::breakstick_holes(
-                    poffs,
-                    pcfg.embed_object.object_gap_mm, // padding
-                    pcfg.embed_object.stick_stride_mm,
-                    pcfg.embed_object.stick_width_mm,
-                    pcfg.embed_object.stick_penetration_mm);
-                
-                pad_cut_polys.emplace_back(poffs);
-            }
-        }
-    }
+    offs.AddPaths(paths, jointype, etClosedPolygon);
+
+    Paths result; 
+    offs.Execute(result, static_cast<double>(delta));
     
-    Polygons outer_pad = concave_hull(pad_outer_skeleton, C.mergedist, thr);
+    return result;
+}
+
+template<class...Args> void offset_single(ExPolygon &poly, Args...args) {
+    ExPolygons tmp = offset_ex(poly, args...);
     
-    for (Polygon &p : outer_pad) {
-        coord_t   delta = C.s_safety_dist + C.s_wingdist + C.s_thickness;
-        offset(p, 2 * delta);
-        offset(p, -delta);
-    }
+    assert(tmp.size() == 1);
+    if (tmp.empty()) return;
     
-    ExPolygons outer_pad_with_holes = diff_ex(outer_pad,
-                                              to_polygons(pad_cut_polys));
+    poly = tmp.front();
+}
+
+void offset_waffle_style(Polygons &cntrs, coord_t delta) {
+    ClipperLib::Paths paths = Slic3rMultiPoints_to_ClipperPaths(cntrs);
+    paths = fast_offset(paths, 2 * delta, ClipperLib::jtRound);
+    paths = fast_offset(paths, -delta, ClipperLib::jtRound);
+    cntrs = ClipperPaths_to_Slic3rPolygons(paths);
+}
+
+template<class P>
+Contour3D create_outer_pad(const std::vector<P> &skeleton, const PadConfig &pcfg)
+{
+    FineCfg C(pcfg);
+    auto &thr = pcfg.throw_on_cancel;
+    Contour3D ret;
     
-    for (ExPolygon &pad_part : outer_pad_with_holes) {
+    for (const P &pad_part : skeleton) {
         ExPolygon top_poly(pad_part);
         ExPolygon bottom_poly(top_poly);
-        offset(bottom_poly, -C.s_bottom_offs);
+        offset_single(bottom_poly, -C.s_bottom_offs);
         
         ExPolygon middle_base(top_poly);
         ExPolygon inner_base(top_poly);
         ExPolygon outer_base(top_poly);
         
         if (C.wingheight > 0) { // If pad cavity is requested
-            offset(inner_base,  -C.s_thickness - C.s_wingdist - C.s_eradius);
-            offset(middle_base, -C.s_thickness);
+            offset_single(inner_base,  -C.s_thickness - C.s_wingdist - C.s_eradius);
+            offset_single(middle_base, -C.s_thickness);
             
             top_poly.holes.emplace_back(middle_base.contour);
             auto &tph = top_poly.holes.back().points;
@@ -1133,15 +691,146 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
             ret.merge(triangulate_expolygon_3d(inner_base, -C.wingheight));
     }
     
-    ExPolygons inner_pad_with_holes = diff_ex(to_polygons(pad_inner_skeleton),
-                                              to_polygons(pad_cut_polys));
+    return ret;
+}
+
+struct AroundPadSkeleton {
+    const PadConfig &pcfg;
+    FineCfg C;
+
+    AroundPadSkeleton(const ExPolygons &support_contours,
+                      const ExPolygons &model_contours,
+                      const PadConfig & cfg)
+        : pcfg(cfg), C(cfg)
+    {
+        // We need to merge the support and the model contours in a special
+        // way in which the model contours have to be substracted from the
+        // support contours. The pad has to have a hole in which the model can
+        // fit perfectly (thus the substraction -- diff_ex). Also, the pad has
+        // to be eliminated from areas where there is no need for a pad, due
+        // to missing supports.
+
+        // m_intersector is a spatial index used here to be able to efficiently
+        // find intersections with the model contours. Model contours which do
+        // not have any intersection with the support contours have to be
+        // removed. (e.g. a hole in the model contour which does not host any
+        // supports or supports are not present outside the model only in some
+        // of its holes)
+
+        Contour3D ret;
+        auto &    thr = pcfg.throw_on_cancel;
+
+        for (auto &ep : support_contours)  {
+            ExPolygons tmp = offset_ex(ep, C.s_thickness);
+            for (auto &t : tmp) m_intersector.add(t);
+        }
+
+        // Create a concave hull from just the support contours. We have to
+        // include it amongst the support contours as it is a potential part
+        // of them. If some model contour does not intersect with any support
+        // contour and it is removed from the pad skeleton, then a concave
+        // hull is genrated from the support contours and that CAN intersect
+        // with some of the model contours. So we consider the concave hull
+        // (of supports) as part of the supports.
+        Polygons concavehs = concave_hull(support_contours, C.mergedist, thr);
+        for (Polygon &p : concavehs) m_intersector.add(ExPolygon(p));
+        
+        m_outer.reserve(support_contours.size() + model_contours.size());
+
+        // Fill the pad skeleton with the support contours which are certainly
+        // part of the pad.
+        for (auto &ep : support_contours) m_outer.emplace_back(ep.contour);
+        
+        ClipperLib::PolyTree ptree = union_pt(model_contours);
+        
+        auto inner_polys = reserve_vector<ExPolygon>(ptree.Total());
+        
+        for (ClipperLib::PolyTree::PolyNode *node : ptree.Childs) {
+            ExPolygon poly(ClipperPath_to_Slic3rPolygon(node->Contour));
+            for (ClipperLib::PolyTree::PolyNode *child : node->Childs) {
+                if (child->IsHole()) {
+                    poly.holes.emplace_back(
+                        ClipperPath_to_Slic3rPolygon(child->Contour));
+                    
+                    traverse_pt_unordered(child->Childs, &inner_polys);
+                }
+                else traverse_pt_unordered(child, &inner_polys);
+            }
+            
+            process_skeleton_poly(poly, m_outer);
+        }
+        
+        for (auto &p : inner_polys) process_skeleton_poly(p, m_inner);
+    }
     
-    for (const ExPolygon &pad_part : inner_pad_with_holes) {
+    ExPolygons outer() const {
+        Polygons outer_pad =
+            concave_hull(m_outer, C.mergedist, pcfg.throw_on_cancel);
+        
+        offset_waffle_style(outer_pad, C.s_waffle_offs);
+        
+        return diff_ex(outer_pad, to_polygons(m_clip));
+    }
+    
+    ExPolygons inner() const {
+        return diff_ex(to_polygons(m_inner), to_polygons(m_clip));
+    }
+    
+private:
+    
+    void process_skeleton_poly(const ExPolygon &poly, ExPolygons &out_skeleton)
+    {        
+        coord_t s_embed_object_gap = scaled(pcfg.embed_object.object_gap_mm);
+        for (const Polygon &hole : poly.holes) {
+            ExPolygon holepoly(hole);
+            holepoly.contour.reverse();
+            
+            if (m_intersector.intersects(holepoly)) {
+                auto inners = offset_ex(holepoly, -s_embed_object_gap);
+                for (ExPolygon &inp : inners) m_inner.emplace_back(inp);
+                
+            } else m_clip.emplace_back(holepoly);
+        }
+        
+        ExPolygons poly_gap_offs = offset_ex(poly, s_embed_object_gap);
+        for (auto &poffs : poly_gap_offs) {
+            if (m_intersector.intersects(poffs)) {
+                out_skeleton.emplace_back(poffs);
+                sla::breakstick_holes(
+                    poffs,
+                    pcfg.embed_object.object_gap_mm, // padding
+                    pcfg.embed_object.stick_stride_mm,
+                    pcfg.embed_object.stick_width_mm,
+                    pcfg.embed_object.stick_penetration_mm);
+                
+                m_clip.emplace_back(poffs);
+            }
+        }
+    }
+    
+    ExPolygons m_outer, m_inner, m_clip;
+    Intersector m_intersector;
+};
+
+Contour3D pad_around_model(const ExPolygons &support_contours,
+                           const ExPolygons &model_contours,
+                           const PadConfig  &pcfg)
+{    
+    Contour3D ret;
+    
+    AroundPadSkeleton skeleton(support_contours, model_contours, pcfg);
+    const FineCfg &C = skeleton.C;
+    auto &thr = pcfg.throw_on_cancel;
+   
+    ret.merge(create_outer_pad(skeleton.outer(), pcfg));
+    
+    ExPolygons inner_pad_skeleton = skeleton.inner();
+    for (const ExPolygon &pad_part : inner_pad_skeleton) {
         ret.merge(walls(pad_part.contour, pad_part.contour, 0, -C.fullheight,
                         C.bottom_offs, thr));
 
         for (auto &h : pad_part.holes)
-            ret.merge(walls(h, h, 0, -C.fullheight, 0, thr));
+            ret.merge(straight_walls(h, 0, -C.fullheight, thr));
         
         ret.merge(triangulate_expolygon_3d(pad_part, -C.fullheight, true));
         ret.merge(triangulate_expolygon_3d(pad_part));
@@ -1149,20 +838,6 @@ Contour3D pad_around_model(const ExPolygons &support_contours,
 
     return ret;   
 }
-
-
-//// Punch the breaksticks
-//for (auto &poffs : poly_gap_offs) {
-//    //            sla::breakstick_holes(
-//    //                poly,
-//    //                pcfg.embed_object.object_gap_mm, // padding
-//    //                pcfg.embed_object.stick_stride_mm,
-//    //                pcfg.embed_object.stick_width_mm,
-//    //                pcfg.embed_object.stick_penetration_mm);
-    
-//    pad_outer_skeleton.emplace_back(poffs);
-//    support_index.add(poffs);
-//}
 
 Contour3D pad_below_model(const ExPolygons &support_contours,
                           const ExPolygons &model_contours,
@@ -1179,56 +854,11 @@ Contour3D pad_below_model(const ExPolygons &support_contours,
     Contour3D ret;
     auto &    thr = pcfg.throw_on_cancel;
     
-    // After concave_hull merges the parts of the skeleton in its own way,
-    // the result can still be multiple polygons dependin on the merge distance.
-    // The resulting parts will be inflated so they can collide but this case
-    // is not considered as the merge distance should be much greater than the
-    // applied offset. 
     Polygons concavehs = concave_hull(pad_skeleton, C.mergedist, thr);
     
-    // We assume individual concave hulls are distant enough to not collide
-    // after the offset is applied.
-    for (auto &p : concavehs) {
-        
-        // Here lies the trick that does the smoothing only with clipper
-        // offset calls. The offset is configured to round edges. Inner edges
-        // will be rounded because we offset twice: inflate then deflate
-        ExPolygon top_poly(p);
-        coord_t   delta = C.s_safety_dist + C.s_wingdist + C.s_thickness;
-        offset(top_poly, 2 * delta);
-        offset(top_poly, -delta);
-
-        ExPolygon bottom_poly(top_poly);
-        offset(bottom_poly, -C.s_bottom_offs);
-
-        ExPolygon middle_base(top_poly);
-        ExPolygon inner_base(top_poly);
-        ExPolygon outer_base(top_poly);
-
-        if (C.wingheight > 0) { // If pad cavity is requested
-            offset(inner_base,  -C.s_thickness - C.s_wingdist - C.s_eradius);
-            offset(middle_base, -C.s_thickness);
-
-            top_poly.holes.emplace_back(middle_base.contour);
-            auto &tph = top_poly.holes.back().points;
-            std::reverse(tph.begin(), tph.end());
-        }
-
-        ret.merge(walls(outer_base.contour, bottom_poly.contour, 0,
-                        -C.fullheight, C.bottom_offs, thr));
-
-        if (C.wingheight > 0) {
-            // Next is the cavity walls connecting to the top plate's
-            // artificially created hole.
-            ret.merge(walls(inner_base.contour, middle_base.contour,
-                            -C.wingheight, 0, -C.wingdist, thr));
-        }
-
-        ret.merge(triangulate_expolygon_3d(bottom_poly, -C.fullheight, true));
-        ret.merge(triangulate_expolygon_3d(top_poly));
-        if (C.wingheight > 0)
-            ret.merge(triangulate_expolygon_3d(inner_base, -C.wingheight));
-    }
+    offset_waffle_style(concavehs, C.s_waffle_offs);
+    
+    ret.merge(create_outer_pad(concavehs, pcfg));
 
     return ret;
 }
@@ -1244,21 +874,6 @@ Contour3D create_pad(const ExPolygons &support_contours,
 }
 
 }
-
-
-//void create_base_pool(const Polygons &ground_layer, TriangleMesh& out,
-//                      const ExPolygons &holes, const PoolConfig& cfg)
-//{
-
-
-//    // For debugging:
-//    // bench.stop();
-//    // std::cout << "Pad creation time: " << bench.getElapsedSec() << std::endl;
-//    // std::fstream fout("pad_debug.obj", std::fstream::out);
-//    // if(fout.good()) pool.to_obj(fout);
-
-//    out.merge(mesh(create_base_pool(ground_layer, holes, cfg)));
-//}
 
 // Interface function
 void create_pad(const ExPolygons &sup_contours,

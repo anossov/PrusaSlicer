@@ -383,10 +383,12 @@ unscaled(const Eigen::Matrix<Tin, N, EigenArgs...> &v) noexcept
     return v.template cast<Tout>() * SCALING_FACTOR;
 }
 
-template<class T> inline std::vector<T> reserve_vector(size_t capacity)
+template<class T, class I, class... Args> // Arbitrary allocator can be used
+inline IntegerOnly<I, std::vector<T, Args...>> reserve_vector(I capacity)
 {
-    std::vector<T> ret;
-    ret.reserve(capacity);
+    std::vector<T, Args...> ret;
+    if (capacity > I(0)) ret.reserve(size_t(capacity));
+    
     return ret;
 }
 
