@@ -1022,6 +1022,9 @@ public:
 
     // The height of the pad from the bottom to the top not considering the pit
     ConfigOptionFloat pad_wall_height /*= 5*/;
+    
+    // How far should the pad extend around the contained geometry
+    ConfigOptionFloat pad_brim_size;
 
     // The greatest distance where two individual pads are merged into one. The
     // distance is measured roughly from the centroids of the pads.
@@ -1084,6 +1087,7 @@ protected:
         OPT_PTR(pad_enable);
         OPT_PTR(pad_wall_thickness);
         OPT_PTR(pad_wall_height);
+        OPT_PTR(pad_brim_size);
         OPT_PTR(pad_max_merge_distance);
         // OPT_PTR(pad_edge_radius);
         OPT_PTR(pad_wall_slope);

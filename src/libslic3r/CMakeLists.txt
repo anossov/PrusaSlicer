@@ -174,8 +174,8 @@ add_library(libslic3r STATIC
     miniz_extension.cpp
     SLA/SLACommon.hpp
     SLA/SLABoilerPlate.hpp
-    SLA/SLABasePool.hpp
-    SLA/SLABasePool.cpp
+    SLA/SLAPad.hpp
+    SLA/SLAPad.cpp
     SLA/SLASupportTree.hpp
     SLA/SLASupportTree.cpp
     SLA/SLASupportTreeIGL.cpp

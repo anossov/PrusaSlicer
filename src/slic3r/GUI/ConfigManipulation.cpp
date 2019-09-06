@@ -348,6 +348,7 @@ void ConfigManipulation::toggle_print_sla_options(DynamicPrintConfig* config)
 
     toggle_field("pad_wall_thickness", pad_en);
     toggle_field("pad_wall_height", pad_en);
+    toggle_field("pad_brim_size", pad_en);
     toggle_field("pad_max_merge_distance", pad_en);
  // toggle_field("pad_edge_radius", supports_en);
     toggle_field("pad_wall_slope", pad_en);

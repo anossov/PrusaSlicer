@@ -46,7 +46,7 @@ struct PadConfig {
         double stick_width_mm = 0.3;
         double stick_penetration_mm = 0.1;
         bool enabled = false;
-        bool force_brim = false;
+        bool everywhere = false;
         operator bool() const { return enabled; }
     } embed_object;
 

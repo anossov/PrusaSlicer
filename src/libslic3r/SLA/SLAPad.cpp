@@ -1,4 +1,4 @@
-#include "SLABasePool.hpp"
+#include "SLAPad.hpp"
 #include "SLABoilerPlate.hpp"
 #include "SLASpatIndex.hpp"
 
@@ -743,7 +743,7 @@ Contour3D create_pad_geometry(const ExPolygons &support_blueprint,
     PadSkeleton skelet;
     
     if (cfg.embed_object.enabled) {
-        if (cfg.embed_object.force_brim)
+        if (cfg.embed_object.everywhere)
             skelet = BrimPadSkeleton(support_blueprint, model_blueprint, cfg);
         else
             skelet = AroundPadSkeleton(support_blueprint, model_blueprint, cfg);

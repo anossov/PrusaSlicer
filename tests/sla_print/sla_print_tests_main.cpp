@@ -4,7 +4,7 @@
 #include "libslic3r/Format/OBJ.hpp"
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/TriangleMesh.hpp"
-#include "libslic3r/SLA/SLABasePool.hpp"
+#include "libslic3r/SLA/SLAPad.hpp"
 #include "libslic3r/SLA/SLASupportTree.hpp"
 #include "libslic3r/SLA/SLAAutoSupports.hpp"
 #include "libslic3r/MTUtils.hpp"
@@ -157,10 +157,8 @@ void test_supports(const std::string &       obj_filename,
     // Generate the actual support tree
     sla::SLASupportTree supporttree(support_points, emesh, supportcfg);
     
-    // Get the TriangleMesh object for the generated supports
     const TriangleMesh &output_mesh = supporttree.merged_mesh();
     
-    // Check the mesh for sanity
     check_validity(output_mesh, validityflags);
     
     // Quick check if the dimensions and placement of supports are correct
@@ -215,7 +213,7 @@ void test_support_model_collision(
 
 const char * const test_objects[] = {
     "20mm_cube.obj",
-    "cube_with_hole.obj"
+    "cube_with_concave_hole_enlarged.obj"
 };
 
 } // namespace
@@ -231,6 +229,20 @@ TEST(SLASupportGeneration, PadWinged) {
     padcfg.wall_height_mm = 1.;
     
     for (auto objfile : test_objects) test_pad(objfile, padcfg);
+}
+
+TEST(SLASupportGeneration, PadAroundObject) {
+    sla::PadConfig padcfg;
+    
+    // Add some wings to the pad to test the cavity
+    padcfg.wall_height_mm = 1.;
+    padcfg.embed_object.enabled = true;
+    padcfg.embed_object.everywhere = true;
+//    padcfg.embed_object.stick_penetration_mm = -0.1;
+    
+    for (auto objfile : test_objects) {
+        test_pad(objfile, padcfg);
+    }
 }
 
 TEST(SLASupportGeneration, SupportsElevated) {

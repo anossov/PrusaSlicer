@@ -7,7 +7,7 @@
 #include "SLASupportTree.hpp"
 #include "SLABoilerPlate.hpp"
 #include "SLASpatIndex.hpp"
-#include "SLABasePool.hpp"
+#include "SLAPad.hpp"
 
 #include <libslic3r/MTUtils.hpp>
 #include <libslic3r/ClipperUtils.hpp>

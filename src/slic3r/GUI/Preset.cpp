@@ -476,6 +476,7 @@ const std::vector<std::string>& Preset::sla_print_options()
             "pad_enable",
             "pad_wall_thickness",
             "pad_wall_height",
+            "pad_brim_size",
             "pad_max_merge_distance",
             // "pad_edge_radius",
             "pad_wall_slope",

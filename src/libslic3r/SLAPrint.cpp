@@ -1,6 +1,6 @@
 #include "SLAPrint.hpp"
 #include "SLA/SLASupportTree.hpp"
-#include "SLA/SLABasePool.hpp"
+#include "SLA/SLAPad.hpp"
 #include "SLA/SLAAutoSupports.hpp"
 #include "ClipperUtils.hpp"
 #include "Geometry.hpp"
@@ -618,7 +618,7 @@ sla::PadConfig::EmbedObject builtin_pad_cfg(const SLAPrintObjectConfig& c) {
     ret.enabled = is_zero_elevation(c);
 
     if(ret.enabled) {
-        ret.force_brim           = c.pad_around_object_everywhere.getBool();
+        ret.everywhere           = c.pad_around_object_everywhere.getBool();
         ret.object_gap_mm        = c.pad_object_gap.getFloat();
         ret.stick_width_mm       = c.pad_object_connector_width.getFloat();
         ret.stick_stride_mm      = c.pad_object_connector_stride.getFloat();
@@ -629,7 +629,7 @@ sla::PadConfig::EmbedObject builtin_pad_cfg(const SLAPrintObjectConfig& c) {
     return ret;
 }
 
-sla::PadConfig make_pool_config(const SLAPrintObjectConfig& c) {
+sla::PadConfig make_pad_config(const SLAPrintObjectConfig& c) {
     sla::PadConfig pcfg;
 
     pcfg.wall_thickness_mm = c.pad_wall_thickness.getFloat();
@@ -637,6 +637,7 @@ sla::PadConfig make_pool_config(const SLAPrintObjectConfig& c) {
 
     pcfg.max_merge_dist_mm = c.pad_max_merge_distance.getFloat();
     pcfg.wall_height_mm = c.pad_wall_height.getFloat();
+    pcfg.brim_size_mm = c.pad_brim_size.getFloat();
 
     // set builtin pad implicitly ON
     pcfg.embed_object = builtin_pad_cfg(c);
@@ -914,7 +915,7 @@ void SLAPrint::process()
     {
         if(!po.m_supportdata) return;
 
-        sla::PadConfig pcfg = make_pool_config(po.m_config);
+        sla::PadConfig pcfg = make_pad_config(po.m_config);
 
         if (pcfg.embed_object)
             po.m_supportdata->emesh.ground_level_offset(
@@ -982,7 +983,7 @@ void SLAPrint::process()
         if(po.m_config.pad_enable.getBool())
         {
             // Get the distilled pad configuration from the config
-            sla::PadConfig pcfg = make_pool_config(po.m_config);
+            sla::PadConfig pcfg = make_pad_config(po.m_config);
 
             ExPolygons bp; // This will store the base plate of the pad.
             double   pad_h             = pcfg.full_height();
@@ -1699,6 +1700,7 @@ bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_conf
             steps.emplace_back(slaposSupportTree);
         } else if (
                opt_key == "pad_wall_height"
+            || opt_key == "pad_brim_size"
             || opt_key == "pad_max_merge_distance"
             || opt_key == "pad_wall_slope"
             || opt_key == "pad_edge_radius"
@@ -1758,7 +1760,7 @@ double SLAPrintObject::get_elevation() const {
         // its walls but currently it is half of its thickness. Whatever it
         // will be in the future, we provide the config to the get_pad_elevation
         // method and we will have the correct value
-        sla::PadConfig pcfg = make_pool_config(m_config);
+        sla::PadConfig pcfg = make_pad_config(m_config);
         if(!pcfg.embed_object) ret += pcfg.required_elevation();
     }
 

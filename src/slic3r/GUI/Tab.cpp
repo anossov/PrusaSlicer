@@ -3768,6 +3768,7 @@ void TabSLAPrint::build()
     optgroup->append_single_option_line("pad_enable");
     optgroup->append_single_option_line("pad_wall_thickness");
     optgroup->append_single_option_line("pad_wall_height");
+    optgroup->append_single_option_line("pad_brim_size");
     optgroup->append_single_option_line("pad_max_merge_distance");
     // TODO: Disabling this parameter for the beta release
 //    optgroup->append_single_option_line("pad_edge_radius");

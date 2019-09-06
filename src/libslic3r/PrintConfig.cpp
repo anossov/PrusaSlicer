@@ -2693,6 +2693,17 @@ void PrintConfigDef::init_sla_params()
     def->max = 30;
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.));
+    
+    def = this->add("pad_brim_size", coFloat);
+    def->label = L("Pad brim size");
+    def->tooltip = L("How far should the pad extend around the contained geometry");
+    def->category = L("Pad");
+    //     def->tooltip = L("");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->max = 30;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(1.6));
 
     def = this->add("pad_max_merge_distance", coFloat);
     def->label = L("Max merge distance");
