@@ -671,32 +671,37 @@ public:
 private:
     
     void process_skeleton_poly(const ExPolygon &poly, ExPolygons &out_skeleton)
-    {        
+    {
+        ExPolygon polycpy = poly;
+        
         coord_t s_embed_object_gap = scaled(m_embed_cfg.object_gap_mm);
-        for (const Polygon &hole : poly.holes) {
-            ExPolygon holepoly(hole);
+        auto it = polycpy.holes.begin();
+        while (it != polycpy.holes.end()) {
+            ExPolygon holepoly(*it);
             holepoly.contour.reverse();
+            auto inners = offset_ex(holepoly, -s_embed_object_gap);
+            for (ExPolygon &inp : inners) inner.emplace_back(inp);
             
-            if (m_intersector.intersects(holepoly)) {
-                auto inners = offset_ex(holepoly, -s_embed_object_gap);
-                for (ExPolygon &inp : inners) inner.emplace_back(inp);
-                
-            } else m_clip.emplace_back(holepoly);
+            if (m_intersector.intersects(holepoly)) ++it;
+            else {
+                m_clip.emplace_back(holepoly);
+                it = polycpy.holes.erase(it);
+            }
         }
         
-        ExPolygons poly_gap_offs = offset_ex(poly, s_embed_object_gap);
+        ExPolygons poly_gap_offs = offset_ex(polycpy, s_embed_object_gap);
         for (auto &poffs : poly_gap_offs) {
-            if (m_intersector.intersects(poffs)) {
+            if (m_intersector.intersects(poffs))
                 out_skeleton.emplace_back(poffs);
-                sla::breakstick_holes(
-                    poffs,
-                    m_embed_cfg.object_gap_mm, // padding
-                    m_embed_cfg.stick_stride_mm,
-                    m_embed_cfg.stick_width_mm,
-                    m_embed_cfg.stick_penetration_mm);
-                
-                m_clip.emplace_back(poffs);
-            }
+            
+            sla::breakstick_holes(
+                poffs,
+                m_embed_cfg.object_gap_mm,
+                m_embed_cfg.stick_stride_mm,
+                m_embed_cfg.stick_width_mm,
+                m_embed_cfg.stick_penetration_mm);
+            
+            m_clip.emplace_back(poffs);
         }
     }
 };
