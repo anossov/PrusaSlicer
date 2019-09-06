@@ -618,6 +618,7 @@ sla::PadConfig::EmbedObject builtin_pad_cfg(const SLAPrintObjectConfig& c) {
     ret.enabled = is_zero_elevation(c);
 
     if(ret.enabled) {
+        ret.force_brim           = c.pad_around_object_everywhere.getBool();
         ret.object_gap_mm        = c.pad_object_gap.getFloat();
         ret.stick_width_mm       = c.pad_object_connector_width.getFloat();
         ret.stick_stride_mm      = c.pad_object_connector_stride.getFloat();
@@ -1673,6 +1674,7 @@ bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_conf
             || opt_key == "supports_enable"
             || opt_key == "support_object_elevation"
             || opt_key == "pad_around_object"
+            || opt_key == "pad_around_object_everywhere"
             || opt_key == "slice_closing_radius") {
             steps.emplace_back(slaposObjectSlice);
         } else if (

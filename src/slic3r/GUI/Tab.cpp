@@ -3774,6 +3774,7 @@ void TabSLAPrint::build()
     optgroup->append_single_option_line("pad_wall_slope");
 
     optgroup->append_single_option_line("pad_around_object");
+    optgroup->append_single_option_line("pad_around_object_everywhere");
     optgroup->append_single_option_line("pad_object_gap");
     optgroup->append_single_option_line("pad_object_connector_stride");
     optgroup->append_single_option_line("pad_object_connector_width");

@@ -603,7 +603,7 @@ Contour3D create_pad_geometry(const PadSkeleton &skelet, const PadConfig &cfg)
 template<class _Intersector>
 class _AroundPadSkeleton : public PadSkeleton
 {
-    PadConfig::EmbedObject m_embed_cfg;
+    PadConfig::EmbedObject m_cfg;
     ExPolygons             m_clip;
     _Intersector           m_intersector;
 
@@ -611,7 +611,7 @@ public:
     _AroundPadSkeleton(const ExPolygons &support_blueprint,
                        const ExPolygons &model_blueprint,
                        const PadConfig & cfg)
-        : m_embed_cfg{cfg.embed_object}
+        : m_cfg{cfg.embed_object}
     {
         // We need to merge the support and the model contours in a special
         // way in which the model contours have to be substracted from the
@@ -670,36 +670,40 @@ public:
 
 private:
     
-    void process_skeleton_poly(const ExPolygon &poly, ExPolygons &out_skeleton)
+    void process_skeleton_poly_holes(ExPolygon &poly)
     {
-        ExPolygon polycpy = poly;
-        
-        coord_t s_embed_object_gap = scaled(m_embed_cfg.object_gap_mm);
-        auto it = polycpy.holes.begin();
-        while (it != polycpy.holes.end()) {
+        auto it = poly.holes.begin();
+        while (it != poly.holes.end()) {
             ExPolygon holepoly(*it);
             holepoly.contour.reverse();
-            auto inners = offset_ex(holepoly, -s_embed_object_gap);
+            auto inners = offset_ex(holepoly, -scaled(m_cfg.object_gap_mm));
             for (ExPolygon &inp : inners) inner.emplace_back(inp);
             
             if (m_intersector.intersects(holepoly)) ++it;
             else {
                 m_clip.emplace_back(holepoly);
-                it = polycpy.holes.erase(it);
+                it = poly.holes.erase(it);
             }
         }
+    }
+    
+    void process_skeleton_poly(const ExPolygon &poly, ExPolygons &output)
+    {
+        coord_t s_embed_object_gap = scaled(m_cfg.object_gap_mm);
+        ExPolygon polycpy = poly;
+        
+        process_skeleton_poly_holes(polycpy);
         
         ExPolygons poly_gap_offs = offset_ex(polycpy, s_embed_object_gap);
         for (auto &poffs : poly_gap_offs) {
-            if (m_intersector.intersects(poffs))
-                out_skeleton.emplace_back(poffs);
+            if (m_intersector.intersects(poffs)) output.emplace_back(poffs);
             
             sla::breakstick_holes(
                 poffs,
-                m_embed_cfg.object_gap_mm,
-                m_embed_cfg.stick_stride_mm,
-                m_embed_cfg.stick_width_mm,
-                m_embed_cfg.stick_penetration_mm);
+                m_cfg.object_gap_mm,
+                m_cfg.stick_stride_mm,
+                m_cfg.stick_width_mm,
+                m_cfg.stick_penetration_mm);
             
             m_clip.emplace_back(poffs);
         }
