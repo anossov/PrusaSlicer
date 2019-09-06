@@ -19,7 +19,8 @@ struct Contour3D {
     Pointf3s points;
     std::vector<Vec3i> indices;
 
-    void merge(const Contour3D& ctr) {
+    Contour3D& merge(const Contour3D& ctr)
+    {
         auto s3 = coord_t(points.size());
         auto s = indices.size();
 
@@ -29,19 +30,25 @@ struct Contour3D {
         for(size_t n = s; n < indices.size(); n++) {
             auto& idx = indices[n]; idx.x() += s3; idx.y() += s3; idx.z() += s3;
         }
+        
+        return *this;
     }
 
-    void merge(const Pointf3s& triangles) {
+    Contour3D& merge(const Pointf3s& triangles)
+    {
         const size_t offs = points.size();
         points.insert(points.end(), triangles.begin(), triangles.end());
         indices.reserve(indices.size() + points.size() / 3);
         
         for(int i = int(offs); i < int(points.size()); i += 3)
             indices.emplace_back(i, i + 1, i + 2);
+        
+        return *this;
     }
 
     // Write the index triangle structure to OBJ file for debugging purposes.
-    void to_obj(std::ostream& stream) {
+    void to_obj(std::ostream& stream)
+    {
         for(auto& p : points) {
             stream << "v " << p.transpose() << "\n";
         }

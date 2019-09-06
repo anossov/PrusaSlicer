@@ -76,7 +76,7 @@ void test_pad(const std::string &   obj_filename,
     ASSERT_FALSE(mesh.empty());
     
     // Create pad skeleton only from the model
-    Slic3r::sla::pad_plate(mesh, out.model_contours);
+    Slic3r::sla::pad_blueprint(mesh, out.model_contours);
     
     ASSERT_FALSE(out.model_contours.empty());
     
@@ -87,7 +87,7 @@ void test_pad(const std::string &   obj_filename,
     
     auto bb = out.mesh.bounding_box();
     ASSERT_DOUBLE_EQ(bb.max.z() - bb.min.z(),
-                     Slic3r::sla::get_pad_fullheight(padcfg));
+                     padcfg.full_height());
 }
 
 void test_pad(const std::string &   obj_filename,
@@ -228,7 +228,7 @@ TEST(SLASupportGeneration, PadWinged) {
     sla::PadConfig padcfg;
     
     // Add some wings to the pad to test the cavity
-    padcfg.min_wall_height_mm = 1.;
+    padcfg.wall_height_mm = 1.;
     
     for (auto objfile : test_objects) test_pad(objfile, padcfg);
 }
