@@ -18,7 +18,7 @@ namespace sla {
 
 using ThrowOnCancel = std::function<void(void)>;
 
-/// Calculate the polygon representing the silhouette from the specified height
+/// Calculate the polygon representing the silhouette.
 void pad_blueprint(
     const TriangleMesh &mesh,       // input mesh
     ExPolygons &        output,     // Output will be merged with
