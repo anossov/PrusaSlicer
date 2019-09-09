@@ -789,13 +789,16 @@ Contour3D create_pad_geometry(const PadSkeleton &skelet,
                               const PadConfig &  cfg,
                               ThrowOnCancel      thr)
 {
-    // SVG svg("bridgestick_plate.svg");
-    // svg.draw(poly);
+#ifndef NDEBUG
+    SVG svg("pad_skeleton.svg");
+    svg.draw(skelet.outer, "green");
+    svg.draw(skelet.inner, "blue");
+    svg.Close();
+#endif
+    
     PadConfig3D cfg3d(cfg);
     return create_outer_pad_geometry(skelet.outer, cfg3d, thr)
         .merge(create_inner_pad_geometry(skelet.inner, cfg3d, thr));
-    
-    //SVG.close();
 }
 
 Contour3D create_pad_geometry(const ExPolygons &supp_bp,
