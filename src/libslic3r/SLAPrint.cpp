@@ -53,7 +53,7 @@ const std::array<unsigned, slaposCount>     OBJ_STEP_LEVELS =
     30,     // slaposObjectSlice,
     20,     // slaposSupportPoints,
     10,     // slaposSupportTree,
-    10,     // slaposBasePool,
+    10,     // slaposPad,
     30,     // slaposSliceSupports,
 };
 
@@ -64,7 +64,7 @@ std::string OBJ_STEP_LABELS(size_t idx)
     case slaposObjectSlice:     return L("Slicing model");
     case slaposSupportPoints:   return L("Generating support points");
     case slaposSupportTree:     return L("Generating support tree");
-    case slaposPad:        return L("Generating pad");
+    case slaposPad:             return L("Generating pad");
     case slaposSliceSupports:   return L("Slicing supports");
     default:;
     }
@@ -645,6 +645,13 @@ sla::PadConfig make_pad_config(const SLAPrintObjectConfig& c) {
     return pcfg;
 }
 
+bool validate_pad(const TriangleMesh &pad, const sla::PadConfig &pcfg) 
+{
+    // An empty pad can only be created if embed_object mode is enabled
+    // and the pad is not forced everywhere
+    return !pad.empty() || (pcfg.embed_object.enabled && !pcfg.embed_object.everywhere);
+}
+
 }
 
 std::string SLAPrint::validate() const
@@ -975,7 +982,7 @@ void SLAPrint::process()
     };
 
     // This step generates the sla base pad
-    auto base_pool = [this](SLAPrintObject& po) {
+    auto generate_pad = [this](SLAPrintObject& po) {
         // this step can only go after the support tree has been created
         // and before the supports had been sliced. (or the slicing has to be
         // repeated)
@@ -1002,8 +1009,14 @@ void SLAPrint::process()
                                thrfn);
             }
 
-            pcfg.throw_on_cancel = thrfn;
             po.m_supportdata->support_tree_ptr->add_pad(bp, pcfg);
+            auto &pad_mesh = po.m_supportdata->support_tree_ptr->get_pad();
+            
+            if (!validate_pad(pad_mesh, pcfg))
+                throw std::runtime_error(
+                    L("No pad can be generated for this model with the "
+                      "current configuration"));
+
         } else if(po.m_supportdata && po.m_supportdata->support_tree_ptr) {
             po.m_supportdata->support_tree_ptr->remove_pad();
         }
@@ -1456,7 +1469,7 @@ void SLAPrint::process()
 
     slaposFn pobj_program[] =
     {
-        slice_model, support_points, support_tree, base_pool, slice_supports
+        slice_model, support_points, support_tree, generate_pad, slice_supports
     };
 
     // We want to first process all objects...

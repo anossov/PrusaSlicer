@@ -211,15 +211,31 @@ void test_support_model_collision(
     ASSERT_TRUE(notouch);
 }
 
-const char * const test_objects[] = {
+const char * const BELOW_PAD_TEST_OBJECTS[] = {
     "20mm_cube.obj",
-    "cube_with_concave_hole_enlarged.obj"
+    "V.obj",
+};
+
+const char * const AROUND_PAD_TEST_OBJECTS[] = {
+    "20mm_cube.obj",
+    "V.obj",
+//    "frog_legs.obj",
+    "cube_with_concave_hole_enlarged.obj",
+};
+
+const char *const SUPPORT_TEST_MODELS[] = {
+    "cube_with_concave_hole_enlarged_standing.obj",
 };
 
 } // namespace
 
 TEST(SLASupportGeneration, PadFlat) {
-    for (auto objfile : test_objects) test_pad(objfile);
+    sla::PadConfig padcfg;
+    
+    // Disable wings
+    padcfg.wall_height_mm = .0;
+    
+    for (auto &fname : BELOW_PAD_TEST_OBJECTS) test_pad(fname, padcfg);
 }
 
 TEST(SLASupportGeneration, PadWinged) {
@@ -228,40 +244,52 @@ TEST(SLASupportGeneration, PadWinged) {
     // Add some wings to the pad to test the cavity
     padcfg.wall_height_mm = 1.;
     
-    for (auto objfile : test_objects) test_pad(objfile, padcfg);
+    for (auto &fname : BELOW_PAD_TEST_OBJECTS) test_pad(fname, padcfg);
 }
 
-TEST(SLASupportGeneration, PadAroundObject) {
+TEST(SLASupportGeneration, PadAroundObjectFlat) {
     sla::PadConfig padcfg;
     
     // Add some wings to the pad to test the cavity
-    padcfg.wall_height_mm = 1.;
+    padcfg.wall_height_mm = 0.;
     padcfg.embed_object.enabled = true;
     padcfg.embed_object.everywhere = true;
-//    padcfg.embed_object.stick_penetration_mm = -0.1;
     
-    for (auto objfile : test_objects) {
-        test_pad(objfile, padcfg);
-    }
+    for (auto &fname : AROUND_PAD_TEST_OBJECTS) test_pad(fname, padcfg);
 }
 
+// This is not ready yet
+//TEST(SLASupportGeneration, PadAroundObjectWinged) {
+//    sla::PadConfig padcfg;
+    
+//    // Add some wings to the pad to test the cavity
+//    padcfg.wall_height_mm = 1.;
+//    padcfg.embed_object.enabled = true;
+//    padcfg.embed_object.everywhere = true;
+    
+//    for (auto &fname : AROUND_PAD_TEST_OBJECTS) test_pad(fname, padcfg);
+//}
+
 TEST(SLASupportGeneration, SupportsElevated) {
-    for (auto objfile : test_objects) test_supports(objfile);
+    sla::SupportConfig supportcfg;
+    supportcfg.object_elevation_mm = 5.;
+    
+    for (auto fname : SUPPORT_TEST_MODELS) test_supports(fname);
 }
 
 TEST(SLASupportGeneration, SupportsFloor) {
     sla::SupportConfig supportcfg;
     supportcfg.object_elevation_mm = 0;
     
-    for (auto objfile : test_objects) test_supports(objfile, supportcfg);
+    for (auto &fname: SUPPORT_TEST_MODELS) test_supports(fname, supportcfg);
 }
 
 TEST(SLASupportGeneration, SupportsShouldNotPierceModel) {
     
     sla::SupportConfig supportcfg;
 
-    for (auto objfile : test_objects)
-        test_support_model_collision(objfile, supportcfg);
+    for (auto fname : SUPPORT_TEST_MODELS)
+        test_support_model_collision(fname, supportcfg);
 }
 
 int main(int argc, char **argv) {

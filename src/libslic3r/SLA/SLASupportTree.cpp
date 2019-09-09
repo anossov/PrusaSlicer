@@ -607,13 +607,11 @@ struct Pad {
     Pad(const TriangleMesh &support_mesh,
         const ExPolygons &  model_contours,
         double              ground_level,
-        const PadConfig &  pcfg)
+        const PadConfig &   pcfg,
+        ThrowOnCancel       thr)
         : cfg(pcfg)
-        , zlevel(ground_level + pcfg.full_height() -
-                 pcfg.required_elevation())
+        , zlevel(ground_level + pcfg.full_height() - pcfg.required_elevation())
     {
-        auto &thr = cfg.throw_on_cancel;
-
         thr();
 
         ExPolygons sup_contours;
@@ -808,9 +806,10 @@ public:
 
     const Pad &create_pad(const TriangleMesh &object_supports,
                           const ExPolygons &  modelbase,
-                          const PadConfig &  cfg)
+                          const PadConfig &   cfg)
     {
-        m_pad = Pad(object_supports, modelbase, ground_level, cfg);
+        m_pad = Pad{object_supports, modelbase, ground_level, cfg, m_ctl.cancelfn};
+
         return m_pad;
     }
 

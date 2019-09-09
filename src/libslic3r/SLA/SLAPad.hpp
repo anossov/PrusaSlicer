@@ -23,34 +23,31 @@ void pad_blueprint(
     const TriangleMesh &mesh,       // input mesh
     ExPolygons &        output,     // Output will be merged with
     const std::vector<float> &,     // Exact Z levels to sample
-    ThrowOnCancel thrfn = []() {}); // Function that throws if cancel was requested
+    ThrowOnCancel thrfn = [] {}); // Function that throws if cancel was requested
 
 void pad_blueprint(
     const TriangleMesh &mesh,                   
     ExPolygons &        output,                 
     float               samplingheight = 0.1f,  // The height range to sample
     float               layerheight    = 0.05f, // The sampling height
-    ThrowOnCancel       thrfn = []() {});
-
+    ThrowOnCancel       thrfn = [] {});
 
 struct PadConfig {
-    double wall_thickness_mm = 2.;
-    double wall_height_mm = 5.;
+    double wall_thickness_mm = 1.;
+    double wall_height_mm = 1.;
     double max_merge_dist_mm = 50;
     double wall_slope = std::atan(1.0);          // Universal constant for Pi/4
     double brim_size_mm = 1.6;
     
     struct EmbedObject {
-        double object_gap_mm = 0.5;
+        double object_gap_mm = 1.;
         double stick_stride_mm = 10.;
-        double stick_width_mm = 0.3;
+        double stick_width_mm = 0.5;
         double stick_penetration_mm = 0.1;
         bool enabled = false;
         bool everywhere = false;
         operator bool() const { return enabled; }
     } embed_object;
-
-    ThrowOnCancel throw_on_cancel = [](){};
     
     inline PadConfig() = default;
     inline PadConfig(double thickness,
@@ -85,7 +82,8 @@ struct PadConfig {
 void create_pad(const ExPolygons &support_contours,
                 const ExPolygons &model_contours,
                 TriangleMesh &    output_mesh,
-                const PadConfig & = PadConfig());
+                const PadConfig & = PadConfig(),
+                ThrowOnCancel throw_on_cancel = []{});
 
 } // namespace sla
 } // namespace Slic3r
