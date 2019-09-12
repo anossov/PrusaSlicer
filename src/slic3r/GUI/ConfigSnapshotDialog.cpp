@@ -8,10 +8,10 @@
 #include "GUI_App.hpp"
 #include "wxExtensions.hpp"
 
-namespace Slic3r { 
+namespace Slic3r {
 namespace GUI {
 
-static wxString format_reason(const Config::Snapshot::Reason reason) 
+static wxString format_reason(const Config::Snapshot::Reason reason)
 {
     switch (reason) {
     case Config::Snapshot::SNAPSHOT_UPGRADE:
@@ -36,8 +36,8 @@ static wxString generate_html_row(const Config::Snapshot &snapshot, bool row_eve
     text += "\">";
     text += "<td>";
     // Format the row header.
-    text += wxString("<font size=\"5\"><b>") + (snapshot_active ? _(L("Active")) + ": " : "") + 
-        Utils::format_local_date_time(snapshot.time_captured) + ": " + format_reason(snapshot.reason);
+    text += wxString("<font size=\"5\"><b>") + (snapshot_active ? _(L("Active")) + ": " : "") +
+        wxDateTime(snapshot.time_captured).Format(Utils::LOCALE_TIME_FMT) + ": " + format_reason(snapshot.reason);
     if (! snapshot.comment.empty())
         text += " (" + wxString::FromUTF8(snapshot.comment.data()) + ")";
     text += "</b></font><br>";
@@ -49,8 +49,8 @@ static wxString generate_html_row(const Config::Snapshot &snapshot, bool row_eve
 
     bool compatible = true;
     for (const Config::Snapshot::VendorConfig &vc : snapshot.vendor_configs) {
-        text += _(L("vendor")) + ": " + vc.name +", " + _(L("version")) + ": " + vc.version.config_version.to_string() + 
-				", " + _(L("min slic3r version")) + ": " + vc.version.min_slic3r_version.to_string();
+        text += _(L("vendor")) + ": " + vc.name +", " + _(L("version")) + ": " + vc.version.config_version.to_string() +
+                ", " + _(L("min slic3r version")) + ": " + vc.version.min_slic3r_version.to_string();
         if (vc.version.max_slic3r_version != Semver::inf())
             text += ", " + _(L("max slic3r version")) + ": " + vc.version.max_slic3r_version.to_string();
         text += "<br>";
@@ -72,13 +72,13 @@ static wxString generate_html_row(const Config::Snapshot &snapshot, bool row_eve
     else if (! snapshot_active)
         text += "<p align=\"right\"><a href=\"" + snapshot.id + "\">" + _(L("Activate")) + "</a></p>";
     text += "</td>";
-	text += "</tr>";
+    text += "</tr>";
     return text;
 }
 
 static wxString generate_html_page(const Config::SnapshotDB &snapshot_db, const wxString &on_snapshot)
 {
-    wxString text = 
+    wxString text =
         "<html>"
         "<body bgcolor=\"#ffffff\" cellspacing=\"2\" cellpadding=\"0\" border=\"0\" link=\"#800000\">"
         "<font color=\"#000000\">";
@@ -96,13 +96,13 @@ static wxString generate_html_page(const Config::SnapshotDB &snapshot_db, const 
 }
 
 ConfigSnapshotDialog::ConfigSnapshotDialog(const Config::SnapshotDB &snapshot_db, const wxString &on_snapshot)
-    : DPIDialog(NULL, wxID_ANY, _(L("Configuration Snapshots")), wxDefaultPosition, 
-               wxSize(45 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit()), 
+    : DPIDialog(NULL, wxID_ANY, _(L("Configuration Snapshots")), wxDefaultPosition,
+               wxSize(45 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit()),
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMAXIMIZE_BOX)
 {
     this->SetFont(wxGetApp().normal_font());
     this->SetBackgroundColour(*wxWHITE);
-    
+
     wxBoxSizer* vsizer = new wxBoxSizer(wxVERTICAL);
     this->SetSizer(vsizer);
 
@@ -126,7 +126,7 @@ ConfigSnapshotDialog::ConfigSnapshotDialog(const Config::SnapshotDB &snapshot_db
         vsizer->Add(html, 1, wxEXPAND | wxALIGN_LEFT | wxRIGHT | wxBOTTOM, 0);
         html->Bind(wxEVT_HTML_LINK_CLICKED, &ConfigSnapshotDialog::onLinkClicked, this);
     }
-    
+
     wxStdDialogButtonSizer* buttons = this->CreateStdDialogButtonSizer(wxCLOSE);
     this->SetEscapeId(wxID_CLOSE);
     this->Bind(wxEVT_BUTTON, &ConfigSnapshotDialog::onCloseDialog, this, wxID_CLOSE);

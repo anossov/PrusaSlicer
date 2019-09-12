@@ -3,7 +3,7 @@
 find_package(GTest 1.7)
 
 if(NOT GTEST_FOUND)
-    set(URL_GTEST "https://github.com/google/googletest.git" 
+    set(URL_GTEST "https://github.com/google/googletest.git"
         CACHE STRING "Google test source code repository location.")
 
     message(STATUS "GTest not found so downloading from ${URL_GTEST}")
@@ -58,3 +58,4 @@ else()
 endif()
 
 add_test(libnest2d_tests tests_clipper_nlopt)
+#gtest_discover_tests(tests_clipper_nlopt TEST_PREFIX libnest2d.)
