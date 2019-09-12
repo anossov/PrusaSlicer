@@ -27,7 +27,7 @@ const constexpr char *const LOCALE_TIME_FMT = "%x %X";
 
 enum class TimeZone { local, utc };
 
-// time_t to string functions...
+// time_t to string functions (return date in utf8)...
 
 std::string time2str(const time_t &t, TimeZone zone, const char *fmt = SLICER_TIME_FMT);
 

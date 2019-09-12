@@ -37,7 +37,8 @@ static wxString generate_html_row(const Config::Snapshot &snapshot, bool row_eve
     text += "<td>";
     // Format the row header.
     text += wxString("<font size=\"5\"><b>") + (snapshot_active ? _(L("Active")) + ": " : "") +
-        wxDateTime(snapshot.time_captured).Format(Utils::LOCALE_TIME_FMT) + ": " + format_reason(snapshot.reason);
+        //wxDateTime(snapshot.time_captured).Format(Utils::LOCALE_TIME_FMT) + ": " + format_reason(snapshot.reason);
+        Utils::time2str(snapshot.time_captured, Utils::TimeZone::local, Utils::LOCALE_TIME_FMT) + ": " + format_reason(snapshot.reason);
     if (! snapshot.comment.empty())
         text += " (" + wxString::FromUTF8(snapshot.comment.data()) + ")";
     text += "</b></font><br>";

@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include <clocale>
+#include "libslic3r/Utils.hpp"
 
 //#include <boost/date_time/local_time/local_time.hpp>
 //#include <boost/chrono.hpp>
@@ -17,6 +18,10 @@
     #include <windows.h>
     #undef WIN32_LEAN_AND_MEAN
 #endif /* WIN32 */
+
+#ifdef _MSC_VER
+#include <boost/nowide/convert.hpp>
+#endif
 
 namespace Slic3r {
 namespace Utils {
@@ -30,8 +35,19 @@ std::string _put_time(const std::tm *tms, const char *fmt)
     static const constexpr int MAX_CHARS = 200;
     assert(tms!= nullptr && fmt != nullptr);
 
-    char out[MAX_CHARS];
-    std::strftime(out, MAX_CHARS, fmt, tms);
+    std::string out;
+#ifdef _MSC_VER
+    wchar_t _out[MAX_CHARS];
+
+    std::wstring wfmt = boost::nowide::widen(fmt);
+    size_t len = wcsftime(_out, MAX_CHARS, wfmt.c_str(), tms);
+    out = Slic3r::to_utf8(_out);
+#else
+    char _out[MAX_CHARS];
+    std::strftime(_out, MAX_CHARS, fmt, tms);
+    out = _out;
+#endif
+
     return out;
 }
 

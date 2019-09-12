@@ -9,16 +9,16 @@
 #include "Time.hpp"
 
 #ifdef WIN32
-	#include <windows.h>
-	#include <psapi.h>
+    #include <windows.h>
+    #include <psapi.h>
 #else
-	#include <unistd.h>
-	#include <sys/types.h>
-	#include <sys/param.h>
+    #include <unistd.h>
+    #include <sys/types.h>
+    #include <sys/param.h>
     #include <sys/resource.h>
-	#ifdef BSD
-		#include <sys/sysctl.h>
-	#endif
+    #ifdef BSD
+        #include <sys/sysctl.h>
+    #endif
     #ifdef __APPLE__
         #include <mach/mach.h>
     #endif
@@ -43,7 +43,7 @@
 #include <strings.h>
 #endif /* __linux */
 
-#ifdef _MSC_VER 
+#ifdef _MSC_VER
     #define strcasecmp _stricmp
 #endif
 
@@ -96,7 +96,7 @@ unsigned get_logging_level()
 // This is currently only needed if libslic3r is loaded as a shared library into Perl interpreter
 // to perform unit and integration tests.
 static struct RunOnInit {
-    RunOnInit() { 
+    RunOnInit() {
         set_logging_level(1);
     }
 } g_RunOnInit;
@@ -156,7 +156,7 @@ void set_local_dir(const std::string &dir)
 
 const std::string& localization_dir()
 {
-	return g_local_dir;
+    return g_local_dir;
 }
 
 // Translate function callback, to call wxWidgets translate function to convert non-localized UTF8 string to a localized one.
@@ -178,231 +178,231 @@ const std::string& data_dir()
 // The following helpers are borrowed from the LLVM project https://github.com/llvm
 namespace WindowsSupport
 {
-	template <typename HandleTraits>
-	class ScopedHandle {
-		typedef typename HandleTraits::handle_type handle_type;
-		handle_type Handle;
-		ScopedHandle(const ScopedHandle &other) = delete;
-		void operator=(const ScopedHandle &other) = delete;
-	public:
-		ScopedHandle() : Handle(HandleTraits::GetInvalid()) {}
-	  	explicit ScopedHandle(handle_type h) : Handle(h) {}
-	  	~ScopedHandle() { if (HandleTraits::IsValid(Handle)) HandleTraits::Close(Handle); }
-	  	handle_type take() {
-	    	handle_type t = Handle;
-	    	Handle = HandleTraits::GetInvalid();
-	    	return t;
-	  	}
-	  	ScopedHandle &operator=(handle_type h) {
-	    	if (HandleTraits::IsValid(Handle))
-	      		HandleTraits::Close(Handle);
-	    	Handle = h;
-	    	return *this;
-	  	}
-	  	// True if Handle is valid.
-	  	explicit operator bool() const { return HandleTraits::IsValid(Handle) ? true : false; }
-	  	operator handle_type() const { return Handle; }
-	};
+    template <typename HandleTraits>
+    class ScopedHandle {
+        typedef typename HandleTraits::handle_type handle_type;
+        handle_type Handle;
+        ScopedHandle(const ScopedHandle &other) = delete;
+        void operator=(const ScopedHandle &other) = delete;
+    public:
+        ScopedHandle() : Handle(HandleTraits::GetInvalid()) {}
+        explicit ScopedHandle(handle_type h) : Handle(h) {}
+        ~ScopedHandle() { if (HandleTraits::IsValid(Handle)) HandleTraits::Close(Handle); }
+        handle_type take() {
+            handle_type t = Handle;
+            Handle = HandleTraits::GetInvalid();
+            return t;
+        }
+        ScopedHandle &operator=(handle_type h) {
+            if (HandleTraits::IsValid(Handle))
+                HandleTraits::Close(Handle);
+            Handle = h;
+            return *this;
+        }
+        // True if Handle is valid.
+        explicit operator bool() const { return HandleTraits::IsValid(Handle) ? true : false; }
+        operator handle_type() const { return Handle; }
+    };
 
-	struct CommonHandleTraits {
-	  	typedef HANDLE handle_type;
-	  	static handle_type GetInvalid() { return INVALID_HANDLE_VALUE; }
-	  	static void Close(handle_type h) { ::CloseHandle(h); }
-	  	static bool IsValid(handle_type h) { return h != GetInvalid(); }
-	};
+    struct CommonHandleTraits {
+        typedef HANDLE handle_type;
+        static handle_type GetInvalid() { return INVALID_HANDLE_VALUE; }
+        static void Close(handle_type h) { ::CloseHandle(h); }
+        static bool IsValid(handle_type h) { return h != GetInvalid(); }
+    };
 
-	typedef ScopedHandle<CommonHandleTraits> ScopedFileHandle;
+    typedef ScopedHandle<CommonHandleTraits> ScopedFileHandle;
 
-	std::error_code map_windows_error(unsigned windows_error_code)
-	{
-		#define MAP_ERR_TO_COND(x, y) case x: return std::make_error_code(std::errc::y)
-		switch (windows_error_code) {
-			MAP_ERR_TO_COND(ERROR_ACCESS_DENIED, permission_denied);
-			MAP_ERR_TO_COND(ERROR_ALREADY_EXISTS, file_exists);
-			MAP_ERR_TO_COND(ERROR_BAD_UNIT, no_such_device);
-			MAP_ERR_TO_COND(ERROR_BUFFER_OVERFLOW, filename_too_long);
-			MAP_ERR_TO_COND(ERROR_BUSY, device_or_resource_busy);
-			MAP_ERR_TO_COND(ERROR_BUSY_DRIVE, device_or_resource_busy);
-			MAP_ERR_TO_COND(ERROR_CANNOT_MAKE, permission_denied);
-			MAP_ERR_TO_COND(ERROR_CANTOPEN, io_error);
-			MAP_ERR_TO_COND(ERROR_CANTREAD, io_error);
-			MAP_ERR_TO_COND(ERROR_CANTWRITE, io_error);
-			MAP_ERR_TO_COND(ERROR_CURRENT_DIRECTORY, permission_denied);
-			MAP_ERR_TO_COND(ERROR_DEV_NOT_EXIST, no_such_device);
-			MAP_ERR_TO_COND(ERROR_DEVICE_IN_USE, device_or_resource_busy);
-			MAP_ERR_TO_COND(ERROR_DIR_NOT_EMPTY, directory_not_empty);
-			MAP_ERR_TO_COND(ERROR_DIRECTORY, invalid_argument);
-			MAP_ERR_TO_COND(ERROR_DISK_FULL, no_space_on_device);
-			MAP_ERR_TO_COND(ERROR_FILE_EXISTS, file_exists);
-			MAP_ERR_TO_COND(ERROR_FILE_NOT_FOUND, no_such_file_or_directory);
-			MAP_ERR_TO_COND(ERROR_HANDLE_DISK_FULL, no_space_on_device);
-			MAP_ERR_TO_COND(ERROR_INVALID_ACCESS, permission_denied);
-			MAP_ERR_TO_COND(ERROR_INVALID_DRIVE, no_such_device);
-			MAP_ERR_TO_COND(ERROR_INVALID_FUNCTION, function_not_supported);
-			MAP_ERR_TO_COND(ERROR_INVALID_HANDLE, invalid_argument);
-			MAP_ERR_TO_COND(ERROR_INVALID_NAME, invalid_argument);
-			MAP_ERR_TO_COND(ERROR_LOCK_VIOLATION, no_lock_available);
-			MAP_ERR_TO_COND(ERROR_LOCKED, no_lock_available);
-			MAP_ERR_TO_COND(ERROR_NEGATIVE_SEEK, invalid_argument);
-			MAP_ERR_TO_COND(ERROR_NOACCESS, permission_denied);
-			MAP_ERR_TO_COND(ERROR_NOT_ENOUGH_MEMORY, not_enough_memory);
-			MAP_ERR_TO_COND(ERROR_NOT_READY, resource_unavailable_try_again);
-			MAP_ERR_TO_COND(ERROR_OPEN_FAILED, io_error);
-			MAP_ERR_TO_COND(ERROR_OPEN_FILES, device_or_resource_busy);
-			MAP_ERR_TO_COND(ERROR_OUTOFMEMORY, not_enough_memory);
-			MAP_ERR_TO_COND(ERROR_PATH_NOT_FOUND, no_such_file_or_directory);
-			MAP_ERR_TO_COND(ERROR_BAD_NETPATH, no_such_file_or_directory);
-			MAP_ERR_TO_COND(ERROR_READ_FAULT, io_error);
-			MAP_ERR_TO_COND(ERROR_RETRY, resource_unavailable_try_again);
-			MAP_ERR_TO_COND(ERROR_SEEK, io_error);
-			MAP_ERR_TO_COND(ERROR_SHARING_VIOLATION, permission_denied);
-			MAP_ERR_TO_COND(ERROR_TOO_MANY_OPEN_FILES, too_many_files_open);
-			MAP_ERR_TO_COND(ERROR_WRITE_FAULT, io_error);
-			MAP_ERR_TO_COND(ERROR_WRITE_PROTECT, permission_denied);
-			MAP_ERR_TO_COND(WSAEACCES, permission_denied);
-			MAP_ERR_TO_COND(WSAEBADF, bad_file_descriptor);
-			MAP_ERR_TO_COND(WSAEFAULT, bad_address);
-			MAP_ERR_TO_COND(WSAEINTR, interrupted);
-			MAP_ERR_TO_COND(WSAEINVAL, invalid_argument);
-			MAP_ERR_TO_COND(WSAEMFILE, too_many_files_open);
-			MAP_ERR_TO_COND(WSAENAMETOOLONG, filename_too_long);
-		default:
-			return std::error_code(windows_error_code, std::system_category());
-		}
-		#undef MAP_ERR_TO_COND
-	}
+    std::error_code map_windows_error(unsigned windows_error_code)
+    {
+        #define MAP_ERR_TO_COND(x, y) case x: return std::make_error_code(std::errc::y)
+        switch (windows_error_code) {
+            MAP_ERR_TO_COND(ERROR_ACCESS_DENIED, permission_denied);
+            MAP_ERR_TO_COND(ERROR_ALREADY_EXISTS, file_exists);
+            MAP_ERR_TO_COND(ERROR_BAD_UNIT, no_such_device);
+            MAP_ERR_TO_COND(ERROR_BUFFER_OVERFLOW, filename_too_long);
+            MAP_ERR_TO_COND(ERROR_BUSY, device_or_resource_busy);
+            MAP_ERR_TO_COND(ERROR_BUSY_DRIVE, device_or_resource_busy);
+            MAP_ERR_TO_COND(ERROR_CANNOT_MAKE, permission_denied);
+            MAP_ERR_TO_COND(ERROR_CANTOPEN, io_error);
+            MAP_ERR_TO_COND(ERROR_CANTREAD, io_error);
+            MAP_ERR_TO_COND(ERROR_CANTWRITE, io_error);
+            MAP_ERR_TO_COND(ERROR_CURRENT_DIRECTORY, permission_denied);
+            MAP_ERR_TO_COND(ERROR_DEV_NOT_EXIST, no_such_device);
+            MAP_ERR_TO_COND(ERROR_DEVICE_IN_USE, device_or_resource_busy);
+            MAP_ERR_TO_COND(ERROR_DIR_NOT_EMPTY, directory_not_empty);
+            MAP_ERR_TO_COND(ERROR_DIRECTORY, invalid_argument);
+            MAP_ERR_TO_COND(ERROR_DISK_FULL, no_space_on_device);
+            MAP_ERR_TO_COND(ERROR_FILE_EXISTS, file_exists);
+            MAP_ERR_TO_COND(ERROR_FILE_NOT_FOUND, no_such_file_or_directory);
+            MAP_ERR_TO_COND(ERROR_HANDLE_DISK_FULL, no_space_on_device);
+            MAP_ERR_TO_COND(ERROR_INVALID_ACCESS, permission_denied);
+            MAP_ERR_TO_COND(ERROR_INVALID_DRIVE, no_such_device);
+            MAP_ERR_TO_COND(ERROR_INVALID_FUNCTION, function_not_supported);
+            MAP_ERR_TO_COND(ERROR_INVALID_HANDLE, invalid_argument);
+            MAP_ERR_TO_COND(ERROR_INVALID_NAME, invalid_argument);
+            MAP_ERR_TO_COND(ERROR_LOCK_VIOLATION, no_lock_available);
+            MAP_ERR_TO_COND(ERROR_LOCKED, no_lock_available);
+            MAP_ERR_TO_COND(ERROR_NEGATIVE_SEEK, invalid_argument);
+            MAP_ERR_TO_COND(ERROR_NOACCESS, permission_denied);
+            MAP_ERR_TO_COND(ERROR_NOT_ENOUGH_MEMORY, not_enough_memory);
+            MAP_ERR_TO_COND(ERROR_NOT_READY, resource_unavailable_try_again);
+            MAP_ERR_TO_COND(ERROR_OPEN_FAILED, io_error);
+            MAP_ERR_TO_COND(ERROR_OPEN_FILES, device_or_resource_busy);
+            MAP_ERR_TO_COND(ERROR_OUTOFMEMORY, not_enough_memory);
+            MAP_ERR_TO_COND(ERROR_PATH_NOT_FOUND, no_such_file_or_directory);
+            MAP_ERR_TO_COND(ERROR_BAD_NETPATH, no_such_file_or_directory);
+            MAP_ERR_TO_COND(ERROR_READ_FAULT, io_error);
+            MAP_ERR_TO_COND(ERROR_RETRY, resource_unavailable_try_again);
+            MAP_ERR_TO_COND(ERROR_SEEK, io_error);
+            MAP_ERR_TO_COND(ERROR_SHARING_VIOLATION, permission_denied);
+            MAP_ERR_TO_COND(ERROR_TOO_MANY_OPEN_FILES, too_many_files_open);
+            MAP_ERR_TO_COND(ERROR_WRITE_FAULT, io_error);
+            MAP_ERR_TO_COND(ERROR_WRITE_PROTECT, permission_denied);
+            MAP_ERR_TO_COND(WSAEACCES, permission_denied);
+            MAP_ERR_TO_COND(WSAEBADF, bad_file_descriptor);
+            MAP_ERR_TO_COND(WSAEFAULT, bad_address);
+            MAP_ERR_TO_COND(WSAEINTR, interrupted);
+            MAP_ERR_TO_COND(WSAEINVAL, invalid_argument);
+            MAP_ERR_TO_COND(WSAEMFILE, too_many_files_open);
+            MAP_ERR_TO_COND(WSAENAMETOOLONG, filename_too_long);
+        default:
+            return std::error_code(windows_error_code, std::system_category());
+        }
+        #undef MAP_ERR_TO_COND
+    }
 
-	static std::error_code rename_internal(HANDLE from_handle, const std::wstring &wide_to, bool replace_if_exists)
-	{
-		std::vector<char> rename_info_buf(sizeof(FILE_RENAME_INFO) - sizeof(wchar_t) + (wide_to.size() * sizeof(wchar_t)));
-		FILE_RENAME_INFO &rename_info = *reinterpret_cast<FILE_RENAME_INFO*>(rename_info_buf.data());
-		rename_info.ReplaceIfExists = replace_if_exists;
-		rename_info.RootDirectory = 0;
-		rename_info.FileNameLength = DWORD(wide_to.size() * sizeof(wchar_t));
-		std::copy(wide_to.begin(), wide_to.end(), &rename_info.FileName[0]);
+    static std::error_code rename_internal(HANDLE from_handle, const std::wstring &wide_to, bool replace_if_exists)
+    {
+        std::vector<char> rename_info_buf(sizeof(FILE_RENAME_INFO) - sizeof(wchar_t) + (wide_to.size() * sizeof(wchar_t)));
+        FILE_RENAME_INFO &rename_info = *reinterpret_cast<FILE_RENAME_INFO*>(rename_info_buf.data());
+        rename_info.ReplaceIfExists = replace_if_exists;
+        rename_info.RootDirectory = 0;
+        rename_info.FileNameLength = DWORD(wide_to.size() * sizeof(wchar_t));
+        std::copy(wide_to.begin(), wide_to.end(), &rename_info.FileName[0]);
 
-		::SetLastError(ERROR_SUCCESS);
-		if (! ::SetFileInformationByHandle(from_handle, FileRenameInfo, &rename_info, (DWORD)rename_info_buf.size())) {
-			unsigned Error = GetLastError();
-			if (Error == ERROR_SUCCESS)
-		  		Error = ERROR_CALL_NOT_IMPLEMENTED; // Wine doesn't always set error code.
-			return map_windows_error(Error);
-		}
+        ::SetLastError(ERROR_SUCCESS);
+        if (! ::SetFileInformationByHandle(from_handle, FileRenameInfo, &rename_info, (DWORD)rename_info_buf.size())) {
+            unsigned Error = GetLastError();
+            if (Error == ERROR_SUCCESS)
+                Error = ERROR_CALL_NOT_IMPLEMENTED; // Wine doesn't always set error code.
+            return map_windows_error(Error);
+        }
 
-		return std::error_code();
-	}
+        return std::error_code();
+    }
 
-	static std::error_code real_path_from_handle(HANDLE H, std::wstring &buffer)
-	{
-		buffer.resize(MAX_PATH + 1);
-		DWORD CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
-	  	if (CountChars > buffer.size()) {
-	    	// The buffer wasn't big enough, try again.  In this case the return value *does* indicate the size of the null terminator.
-	    	buffer.resize((size_t)CountChars);
-	    	CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
-	  	}
-	  	if (CountChars == 0)
-	    	return map_windows_error(GetLastError());
-	  	buffer.resize(CountChars);
-	  	return std::error_code();
-	}
+    static std::error_code real_path_from_handle(HANDLE H, std::wstring &buffer)
+    {
+        buffer.resize(MAX_PATH + 1);
+        DWORD CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
+        if (CountChars > buffer.size()) {
+            // The buffer wasn't big enough, try again.  In this case the return value *does* indicate the size of the null terminator.
+            buffer.resize((size_t)CountChars);
+            CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
+        }
+        if (CountChars == 0)
+            return map_windows_error(GetLastError());
+        buffer.resize(CountChars);
+        return std::error_code();
+    }
 
-	std::error_code rename(const std::string &from, const std::string &to)
-	{
-		// Convert to utf-16.
-		std::wstring wide_from = boost::nowide::widen(from);
-		std::wstring wide_to   = boost::nowide::widen(to);
+    std::error_code rename(const std::string &from, const std::string &to)
+    {
+        // Convert to utf-16.
+        std::wstring wide_from = boost::nowide::widen(from);
+        std::wstring wide_to   = boost::nowide::widen(to);
 
-		ScopedFileHandle from_handle;
-		// Retry this a few times to defeat badly behaved file system scanners.
-		for (unsigned retry = 0; retry != 200; ++ retry) {
-			if (retry != 0)
-		  		::Sleep(10);
-			from_handle = ::CreateFileW((LPWSTR)wide_from.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-			if (from_handle)
-		  		break;
-		}
-		if (! from_handle)
-			return map_windows_error(GetLastError());
+        ScopedFileHandle from_handle;
+        // Retry this a few times to defeat badly behaved file system scanners.
+        for (unsigned retry = 0; retry != 200; ++ retry) {
+            if (retry != 0)
+                ::Sleep(10);
+            from_handle = ::CreateFileW((LPWSTR)wide_from.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (from_handle)
+                break;
+        }
+        if (! from_handle)
+            return map_windows_error(GetLastError());
 
-		// We normally expect this loop to succeed after a few iterations. If it
-		// requires more than 200 tries, it's more likely that the failures are due to
-		// a true error, so stop trying.
-		for (unsigned retry = 0; retry != 200; ++ retry) {
-			auto errcode = rename_internal(from_handle, wide_to, true);
+        // We normally expect this loop to succeed after a few iterations. If it
+        // requires more than 200 tries, it's more likely that the failures are due to
+        // a true error, so stop trying.
+        for (unsigned retry = 0; retry != 200; ++ retry) {
+            auto errcode = rename_internal(from_handle, wide_to, true);
 
-			if (errcode == std::error_code(ERROR_CALL_NOT_IMPLEMENTED, std::system_category())) {
-		  		// Wine doesn't support SetFileInformationByHandle in rename_internal.
-		  		// Fall back to MoveFileEx.
-		  		if (std::error_code errcode2 = real_path_from_handle(from_handle, wide_from))
-		    		return errcode2;
-		  		if (::MoveFileExW((LPCWSTR)wide_from.data(), (LPCWSTR)wide_to.data(), MOVEFILE_REPLACE_EXISTING))
-		    		return std::error_code();
-		  		return map_windows_error(GetLastError());
-			}
+            if (errcode == std::error_code(ERROR_CALL_NOT_IMPLEMENTED, std::system_category())) {
+                // Wine doesn't support SetFileInformationByHandle in rename_internal.
+                // Fall back to MoveFileEx.
+                if (std::error_code errcode2 = real_path_from_handle(from_handle, wide_from))
+                    return errcode2;
+                if (::MoveFileExW((LPCWSTR)wide_from.data(), (LPCWSTR)wide_to.data(), MOVEFILE_REPLACE_EXISTING))
+                    return std::error_code();
+                return map_windows_error(GetLastError());
+            }
 
-			if (! errcode || errcode != std::errc::permission_denied)
-		  		return errcode;
+            if (! errcode || errcode != std::errc::permission_denied)
+                return errcode;
 
-			// The destination file probably exists and is currently open in another
-			// process, either because the file was opened without FILE_SHARE_DELETE or
-			// it is mapped into memory (e.g. using MemoryBuffer). Rename it in order to
-			// move it out of the way of the source file. Use FILE_FLAG_DELETE_ON_CLOSE
-			// to arrange for the destination file to be deleted when the other process
-			// closes it.
-			ScopedFileHandle to_handle(::CreateFileW((LPCWSTR)wide_to.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, NULL));
-			if (! to_handle) {
-				auto errcode = map_windows_error(GetLastError());
-				// Another process might have raced with us and moved the existing file
-				// out of the way before we had a chance to open it. If that happens, try
-				// to rename the source file again.
-				if (errcode == std::errc::no_such_file_or_directory)
-					continue;
-				return errcode;
-			}
+            // The destination file probably exists and is currently open in another
+            // process, either because the file was opened without FILE_SHARE_DELETE or
+            // it is mapped into memory (e.g. using MemoryBuffer). Rename it in order to
+            // move it out of the way of the source file. Use FILE_FLAG_DELETE_ON_CLOSE
+            // to arrange for the destination file to be deleted when the other process
+            // closes it.
+            ScopedFileHandle to_handle(::CreateFileW((LPCWSTR)wide_to.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, NULL));
+            if (! to_handle) {
+                auto errcode = map_windows_error(GetLastError());
+                // Another process might have raced with us and moved the existing file
+                // out of the way before we had a chance to open it. If that happens, try
+                // to rename the source file again.
+                if (errcode == std::errc::no_such_file_or_directory)
+                    continue;
+                return errcode;
+            }
 
-			BY_HANDLE_FILE_INFORMATION FI;
-			if (! ::GetFileInformationByHandle(to_handle, &FI))
-		  		return map_windows_error(GetLastError());
+            BY_HANDLE_FILE_INFORMATION FI;
+            if (! ::GetFileInformationByHandle(to_handle, &FI))
+                return map_windows_error(GetLastError());
 
-			// Try to find a unique new name for the destination file.
-			for (unsigned unique_id = 0; unique_id != 200; ++ unique_id) {
-				std::wstring tmp_filename = wide_to + L".tmp" + std::to_wstring(unique_id);
-				std::error_code errcode = rename_internal(to_handle, tmp_filename, false);
-				if (errcode) {
-					if (errcode == std::make_error_code(std::errc::file_exists) || errcode == std::make_error_code(std::errc::permission_denied)) {
-						// Again, another process might have raced with us and moved the file
-						// before we could move it. Check whether this is the case, as it
-						// might have caused the permission denied error. If that was the
-						// case, we don't need to move it ourselves.
-						ScopedFileHandle to_handle2(::CreateFileW((LPCWSTR)wide_to.data(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL));
-						if (! to_handle2) {
-							auto errcode = map_windows_error(GetLastError());
-							if (errcode == std::errc::no_such_file_or_directory)
-						  		break;
-							return errcode;
-						}
-						BY_HANDLE_FILE_INFORMATION FI2;
-						if (! ::GetFileInformationByHandle(to_handle2, &FI2))
-							return map_windows_error(GetLastError());
-						if (FI.nFileIndexHigh != FI2.nFileIndexHigh || FI.nFileIndexLow != FI2.nFileIndexLow || FI.dwVolumeSerialNumber != FI2.dwVolumeSerialNumber)
-							break;
-						continue;
-					}
-					return errcode;
-				}
-				break;
-			}
+            // Try to find a unique new name for the destination file.
+            for (unsigned unique_id = 0; unique_id != 200; ++ unique_id) {
+                std::wstring tmp_filename = wide_to + L".tmp" + std::to_wstring(unique_id);
+                std::error_code errcode = rename_internal(to_handle, tmp_filename, false);
+                if (errcode) {
+                    if (errcode == std::make_error_code(std::errc::file_exists) || errcode == std::make_error_code(std::errc::permission_denied)) {
+                        // Again, another process might have raced with us and moved the file
+                        // before we could move it. Check whether this is the case, as it
+                        // might have caused the permission denied error. If that was the
+                        // case, we don't need to move it ourselves.
+                        ScopedFileHandle to_handle2(::CreateFileW((LPCWSTR)wide_to.data(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL));
+                        if (! to_handle2) {
+                            auto errcode = map_windows_error(GetLastError());
+                            if (errcode == std::errc::no_such_file_or_directory)
+                                break;
+                            return errcode;
+                        }
+                        BY_HANDLE_FILE_INFORMATION FI2;
+                        if (! ::GetFileInformationByHandle(to_handle2, &FI2))
+                            return map_windows_error(GetLastError());
+                        if (FI.nFileIndexHigh != FI2.nFileIndexHigh || FI.nFileIndexLow != FI2.nFileIndexLow || FI.dwVolumeSerialNumber != FI2.dwVolumeSerialNumber)
+                            break;
+                        continue;
+                    }
+                    return errcode;
+                }
+                break;
+            }
 
-			// Okay, the old destination file has probably been moved out of the way at
-			// this point, so try to rename the source file again. Still, another
-			// process might have raced with us to create and open the destination
-			// file, so we need to keep doing this until we succeed.
-		}
+            // Okay, the old destination file has probably been moved out of the way at
+            // this point, so try to rename the source file again. Still, another
+            // process might have raced with us to create and open the destination
+            // file, so we need to keep doing this until we succeed.
+        }
 
-		// The most likely root cause.
-		return std::make_error_code(std::errc::permission_denied);
-	}
+        // The most likely root cause.
+        return std::make_error_code(std::errc::permission_denied);
+    }
 } // namespace WindowsSupport
 #endif /* _WIN32 */
 
@@ -410,10 +410,10 @@ namespace WindowsSupport
 std::error_code rename_file(const std::string &from, const std::string &to)
 {
 #ifdef _WIN32
-	return WindowsSupport::rename(from, to);
+    return WindowsSupport::rename(from, to);
 #else
-	boost::nowide::remove(to.c_str());
-	return std::make_error_code(static_cast<std::errc>(boost::nowide::rename(from.c_str(), to.c_str())));
+    boost::nowide::remove(to.c_str());
+    return std::make_error_code(static_cast<std::errc>(boost::nowide::rename(from.c_str(), to.c_str())));
 #endif
 }
 
@@ -456,7 +456,7 @@ bool is_ini_file(const boost::filesystem::directory_entry &dir_entry)
 
 bool is_idx_file(const boost::filesystem::directory_entry &dir_entry)
 {
-	return is_plain_file(dir_entry) && strcasecmp(dir_entry.path().extension().string().c_str(), ".idx") == 0;
+    return is_plain_file(dir_entry) && strcasecmp(dir_entry.path().extension().string().c_str(), ".idx") == 0;
 }
 
 } // namespace Slic3r
@@ -472,7 +472,7 @@ namespace Slic3r {
 
 // Encode an UTF-8 string to the local code page.
 std::string encode_path(const char *src)
-{    
+{
 #ifdef WIN32
     // Convert the source utf8 encoded string to a wide string.
     std::wstring wstr_src = boost::nowide::widen(src);
@@ -490,7 +490,7 @@ std::string encode_path(const char *src)
 
 // Encode an 8-bit string from a local code page to UTF-8.
 std::string decode_path(const char *src)
-{  
+{
 #ifdef WIN32
     int len = int(strlen(src));
     if (len == 0)
@@ -504,6 +504,14 @@ std::string decode_path(const char *src)
 #else /* WIN32 */
     return src;
 #endif /* WIN32 */
+}
+
+std::string to_utf8(const std::wstring &wstr)
+{
+    std::string str_dst(wstr.size(), 0);
+    int size_needed = ::WideCharToMultiByte(0, 0, wstr.data(), int(wstr.size()), nullptr, 0, nullptr, nullptr);
+    ::WideCharToMultiByte(0, 0, wstr.data(), int(wstr.size()), const_cast<char*>(str_dst.data()), wstr.size(), nullptr, nullptr);
+    return str_dst;
 }
 
 std::string normalize_utf8_nfc(const char *src)
@@ -582,7 +590,7 @@ std::string xml_escape(std::string text)
     return text;
 }
 
-std::string format_memsize_MB(size_t n) 
+std::string format_memsize_MB(size_t n)
 {
     std::string out;
     size_t n2 = 0;
@@ -689,69 +697,69 @@ std::string log_memory_info(bool ignore_loglevel)
 size_t total_physical_memory()
 {
 #if defined(_WIN32) && (defined(__CYGWIN__) || defined(__CYGWIN32__))
-	// Cygwin under Windows. ------------------------------------
-	// New 64-bit MEMORYSTATUSEX isn't available.  Use old 32.bit
-	MEMORYSTATUS status;
-	status.dwLength = sizeof(status);
-	GlobalMemoryStatus( &status );
-	return (size_t)status.dwTotalPhys;
+    // Cygwin under Windows. ------------------------------------
+    // New 64-bit MEMORYSTATUSEX isn't available.  Use old 32.bit
+    MEMORYSTATUS status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatus( &status );
+    return (size_t)status.dwTotalPhys;
 #elif defined(_WIN32)
-	// Windows. -------------------------------------------------
-	// Use new 64-bit MEMORYSTATUSEX, not old 32-bit MEMORYSTATUS
-	MEMORYSTATUSEX status;
-	status.dwLength = sizeof(status);
-	GlobalMemoryStatusEx( &status );
-	return (size_t)status.ullTotalPhys;
+    // Windows. -------------------------------------------------
+    // Use new 64-bit MEMORYSTATUSEX, not old 32-bit MEMORYSTATUS
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx( &status );
+    return (size_t)status.ullTotalPhys;
 #elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-	// UNIX variants. -------------------------------------------
-	// Prefer sysctl() over sysconf() except sysctl() HW_REALMEM and HW_PHYSMEM
+    // UNIX variants. -------------------------------------------
+    // Prefer sysctl() over sysconf() except sysctl() HW_REALMEM and HW_PHYSMEM
 
 #if defined(CTL_HW) && (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))
-	int mib[2];
-	mib[0] = CTL_HW;
+    int mib[2];
+    mib[0] = CTL_HW;
 #if defined(HW_MEMSIZE)
-	mib[1] = HW_MEMSIZE;            // OSX. ---------------------
+    mib[1] = HW_MEMSIZE;            // OSX. ---------------------
 #elif defined(HW_PHYSMEM64)
-	mib[1] = HW_PHYSMEM64;          // NetBSD, OpenBSD. ---------
+    mib[1] = HW_PHYSMEM64;          // NetBSD, OpenBSD. ---------
 #endif
-	int64_t size = 0;               // 64-bit
-	size_t len = sizeof( size );
-	if ( sysctl( mib, 2, &size, &len, NULL, 0 ) == 0 )
-		return (size_t)size;
-	return 0L;			// Failed?
+    int64_t size = 0;               // 64-bit
+    size_t len = sizeof( size );
+    if ( sysctl( mib, 2, &size, &len, NULL, 0 ) == 0 )
+        return (size_t)size;
+    return 0L;			// Failed?
 
 #elif defined(_SC_AIX_REALMEM)
-	// AIX. -----------------------------------------------------
-	return (size_t)sysconf( _SC_AIX_REALMEM ) * (size_t)1024L;
+    // AIX. -----------------------------------------------------
+    return (size_t)sysconf( _SC_AIX_REALMEM ) * (size_t)1024L;
 
 #elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
-	// FreeBSD, Linux, OpenBSD, and Solaris. --------------------
-	return (size_t)sysconf( _SC_PHYS_PAGES ) *
-		(size_t)sysconf( _SC_PAGESIZE );
+    // FreeBSD, Linux, OpenBSD, and Solaris. --------------------
+    return (size_t)sysconf( _SC_PHYS_PAGES ) *
+        (size_t)sysconf( _SC_PAGESIZE );
 
 #elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGE_SIZE)
-	// Legacy. --------------------------------------------------
-	return (size_t)sysconf( _SC_PHYS_PAGES ) *
-		(size_t)sysconf( _SC_PAGE_SIZE );
+    // Legacy. --------------------------------------------------
+    return (size_t)sysconf( _SC_PHYS_PAGES ) *
+        (size_t)sysconf( _SC_PAGE_SIZE );
 
 #elif defined(CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_REALMEM))
-	// DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. --------
-	int mib[2];
-	mib[0] = CTL_HW;
+    // DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. --------
+    int mib[2];
+    mib[0] = CTL_HW;
 #if defined(HW_REALMEM)
-	mib[1] = HW_REALMEM;		// FreeBSD. -----------------
+    mib[1] = HW_REALMEM;		// FreeBSD. -----------------
 #elif defined(HW_PYSMEM)
-	mib[1] = HW_PHYSMEM;		// Others. ------------------
+    mib[1] = HW_PHYSMEM;		// Others. ------------------
 #endif
-	unsigned int size = 0;		// 32-bit
-	size_t len = sizeof( size );
-	if ( sysctl( mib, 2, &size, &len, NULL, 0 ) == 0 )
-		return (size_t)size;
-	return 0L;			// Failed?
+    unsigned int size = 0;		// 32-bit
+    size_t len = sizeof( size );
+    if ( sysctl( mib, 2, &size, &len, NULL, 0 ) == 0 )
+        return (size_t)size;
+    return 0L;			// Failed?
 #endif // sysctl and sysconf variants
 
 #else
-	return 0L;			// Unknown OS.
+    return 0L;			// Unknown OS.
 #endif
 }
 
