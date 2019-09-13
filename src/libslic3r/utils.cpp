@@ -2,7 +2,6 @@
 #include "I18N.hpp"
 
 #include <locale>
-#include <codecvt>
 #include <ctime>
 #include <cstdarg>
 #include <stdio.h>
@@ -505,23 +504,6 @@ std::string decode_path(const char *src)
 #else /* WIN32 */
     return src;
 #endif /* WIN32 */
-}
-
-std::string to_utf8(const std::wstring &wstr)
-{
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
-    return myconv.to_bytes(wstr);
-}
-
-std::wstring from_utf8(const std::string &str)
-{
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
-    return myconv.from_bytes(str);
-}
-
-std::string to_utf8(const std::string &str)
-{
-    return decode_path(str.c_str());
 }
 
 std::string normalize_utf8_nfc(const char *src)

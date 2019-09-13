@@ -12,7 +12,13 @@ time_t get_current_time_utc();
 
 // "YYYY-MM-DD at HH:MM::SS TZ"
 // TZ is the time zone and can be e.g. GMT, CEST or similar code
-const constexpr char *const SLICER_TIME_FMT = "%Y-%m-%d at %T %Z";
+// On Windows, depending on the registry settings, it can spell out the whole
+// time zone string.
+const constexpr char *const SLICER_TZ_TIME_FMT = "%Y-%m-%d at %T %Z";
+
+// SLICER_TZ_TIME_FMT without the time zone codes. If TimeZone::utc is used
+// with the conversion functions, it will append the UTC letters to the end.
+const constexpr char *const SLICER_UTC_TIME_FMT = "%Y-%m-%d at %T";
 
 // ISO8601Z representation of time, without time zone info
 const constexpr char *const ISO8601Z_TIME_FMT = "%Y%m%dT%H%M%SZ";
@@ -29,20 +35,20 @@ enum class TimeZone { local, utc };
 
 // time_t to string functions (return date in utf8)...
 
-std::string time2str(const time_t &t, TimeZone zone, const char *fmt = SLICER_TIME_FMT);
+std::string time2str(const time_t &t, TimeZone zone, const char *fmt = SLICER_TZ_TIME_FMT);
 
-inline std::string current_time2str(TimeZone zone, const char *fmt = SLICER_TIME_FMT)
+inline std::string current_time2str(TimeZone zone, const char *fmt = SLICER_TZ_TIME_FMT)
 {
     return time2str(get_current_time_utc(), zone, fmt);
 }
 
 // Current time in the local time zone
-inline std::string current_local_time2str(const char * fmt = SLICER_TIME_FMT)
+inline std::string current_local_time2str(const char * fmt = SLICER_UTC_TIME_FMT)
 {
     return current_time2str(TimeZone::local, fmt);
 }
 
-inline std::string current_utc_time2str(const char * fmt = SLICER_TIME_FMT)
+inline std::string current_utc_time2str(const char * fmt = SLICER_UTC_TIME_FMT)
 {
     return current_time2str(TimeZone::utc, fmt);
 }

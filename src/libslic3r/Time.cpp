@@ -1,28 +1,34 @@
 #include "Time.hpp"
 
 #include <iomanip>
+#include <codecvt>
 #include <sstream>
 #include <chrono>
 #include <cassert>
 #include <ctime>
 #include <cstdio>
-
 #include <clocale>
 
 #include "libslic3r/Utils.hpp"
-
-//#include <boost/date_time/local_time/local_time.hpp>
-
-#ifdef WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #undef WIN32_LEAN_AND_MEAN
-#endif /* WIN32 */
 
 namespace Slic3r {
 namespace Utils {
 
 namespace {
+
+inline std::string to_utf8(const std::wstring &wstr)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.to_bytes(wstr);
+}
+
+inline std::wstring from_utf8(const std::string &str)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.from_bytes(str);
+}
+
+inline std::string to_utf8(const std::string &str) { return str; }
 
 // FIXME: Implementations with the cpp11 put_time and get_time either not compile
 // or do not pass the tests on the build server
@@ -142,6 +148,16 @@ time_t _timegm(const struct std::tm *tms)
 #endif /* WIN32 */
 }
 
+std::string process_format(const char *fmt, TimeZone zone)
+{
+    std::string fmtstr(fmt);
+
+    if (fmtstr == SLICER_UTC_TIME_FMT && zone == TimeZone::utc)
+        fmtstr += " UTC";
+
+    return fmtstr;
+}
+
 } // namespace
 
 time_t get_current_time_utc()
@@ -173,6 +189,8 @@ std::string time2str(const time_t &t, TimeZone zone, const char *fmt)
     std::string ret;
     std::tm tms = {};
     tms.tm_isdst = -1;
+    std::string fmtstr = process_format(fmt, zone);
+
     switch (zone) {
     case TimeZone::local: ret = tm2str(_localtime_r(&t, &tms), fmt); break;
     case TimeZone::utc:   ret = tm2str(_gmtime_r(&t, &tms), fmt); break;
@@ -186,6 +204,7 @@ time_t str2time(std::basic_istream<TChar> &stream, TimeZone zone, const TChar *f
 {
     std::tm tms = {};
     tms.tm_isdst = -1;
+
     stream >> _get_time(&tms, fmt);
     time_t ret = time_t(-1);
 
@@ -199,13 +218,14 @@ time_t str2time(std::basic_istream<TChar> &stream, TimeZone zone, const TChar *f
 
 time_t str2time(const std::string &str, TimeZone zone, const char *_fmt)
 {
+    std::string fmtstr = process_format(_fmt, zone);
 #ifdef _MSC_VER
     std::wstring wstr = from_utf8(str);
     std::wstringstream ss(wstr);
-    std::wstring wfmt = from_utf8(_fmt);
+    std::wstring wfmt = from_utf8(fmtstr);
     auto fmt = wfmt.c_str();
 #else
-    auto fmt = _fmt;
+    auto fmt = fmtstr.c_str();
     std::stringstream ss(str);
 #endif
     ss.imbue(std::locale(setlocale(LC_ALL, nullptr)));
