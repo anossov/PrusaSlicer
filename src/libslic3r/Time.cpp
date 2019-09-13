@@ -87,17 +87,20 @@ static const std::map<std::string, std::string> fallback_map = {
 
 bool strptime(const char *str, const char *const fmt, std::tm *tms)
 {
+    auto it = fallback_map.find(fmt);
+    if (it == fallback_map.end()) return false;
+
     int y, M, d, h, m, s;
-    if (sscanf(str, fmt, &y, &M, &d, &h, &m, &s) != 6)
+    if (sscanf(str, it->second.c_str(), &y, &M, &d, &h, &m, &s) != 6)
         return false;
-    
+
     tms->tm_year = y - 1900;  // Year since 1900
     tms->tm_mon  = M - 1;     // 0-11
     tms->tm_mday = d;         // 1-31
     tms->tm_hour = h;         // 0-23
     tms->tm_min  = m;         // 0-59
     tms->tm_sec  = s;         // 0-61 (0-60 in C++11)
-    
+
     return true;
 }
 #endif
@@ -107,16 +110,15 @@ std::basic_istream<TChar> &operator>>(std::basic_istream<TChar> &stream,
                                       GetTimeReturnT<TChar> &&gt)
 {
 #ifdef _MSC_VER
-    auto it = fallback_map.find(to_utf8(fmt));
+    auto it = fallback_map.find(to_utf8(gt.fmt));
     if (it == fallback_map.end()) {
         stream >> std::get_time(gt.tms, gt.fmt);
     } else {
 #endif
     std::basic_string<TChar> str;
     std::getline(stream, str);
-    std::string utf8str = to_utf8(str);
-    strptime(utf8str.c_str(), gt.fmt, gt.tms);
-#ifdef _MSC_VER        
+    strptime(to_utf8(str).c_str(), to_utf8(gt.fmt).c_str(), gt.tms);
+#ifdef _MSC_VER
     }
 #endif
 
@@ -211,12 +213,13 @@ static std::string tm2str(const std::tm *tms, const char *fmt)
 #endif
 }
 
-std::string time2str(const time_t &t, TimeZone zone, const char *fmt)
+std::string time2str(const time_t &t, TimeZone zone, const char *_fmt)
 {
     std::string ret;
     std::tm tms = {};
     tms.tm_isdst = -1;
-    std::string fmtstr = process_format(fmt, zone);
+    std::string fmtstr = process_format(_fmt, zone);
+    auto fmt = fmtstr.c_str();
 
     switch (zone) {
     case TimeZone::local: ret = tm2str(_localtime_r(&t, &tms), fmt); break;

@@ -28,7 +28,7 @@ const constexpr char *const ISO8601Z_TIME_FMT = "%Y%m%dT%H%M%SZ";
 // If localized time formatting is needed, might be better to use the GUI
 // toolkit functions. If used with time2str the currently set C locale
 // (set with setlocale()) determines the output format.
-const constexpr char *const LOCALE_TIME_FMT = "%x %X";
+const constexpr char *const LOCALE_TIME_FMT = "%x, %B %X";
 
 enum class TimeZone { local, utc };
 
