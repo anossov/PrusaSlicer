@@ -2,6 +2,7 @@
 #include "I18N.hpp"
 
 #include <locale>
+#include <codecvt>
 #include <ctime>
 #include <cstdarg>
 #include <stdio.h>
@@ -508,10 +509,19 @@ std::string decode_path(const char *src)
 
 std::string to_utf8(const std::wstring &wstr)
 {
-    std::string str_dst(wstr.size(), 0);
-    int size_needed = ::WideCharToMultiByte(0, 0, wstr.data(), int(wstr.size()), nullptr, 0, nullptr, nullptr);
-    ::WideCharToMultiByte(0, 0, wstr.data(), int(wstr.size()), const_cast<char*>(str_dst.data()), wstr.size(), nullptr, nullptr);
-    return str_dst;
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.to_bytes(wstr);
+}
+
+std::wstring from_utf8(const std::string &str)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.from_bytes(str);
+}
+
+std::string to_utf8(const std::string &str)
+{
+    return decode_path(str.c_str());
 }
 
 std::string normalize_utf8_nfc(const char *src)

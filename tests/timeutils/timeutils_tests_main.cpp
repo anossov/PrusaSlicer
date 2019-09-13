@@ -54,12 +54,14 @@ TEST(Timeutils, Slic3r_Time_Format) {
 
 // There is no working std::strptime or std::get_time MSVC currently, so
 // no way to run the back and forth conversion test.
-#ifndef _MSC_VER
+//#ifndef _MSC_VER
 TEST(Timeutils, Locale_Time_Format) {
-    std::locale::global(std::locale(""));
+//    std::locale::global(std::locale(setlocale(LC_ALL, "en-US.utf-8")));
+//    std::cout << setlocale(LC_ALL, nullptr) << std::endl;
+//    std::cout << std::locale().name() << std::endl;
     test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
 }
-#endif
+//#endif
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

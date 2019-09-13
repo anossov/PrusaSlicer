@@ -58,7 +58,9 @@ extern local_encoded_string encode_path(const char *src);
 extern std::string decode_path(const char *src);
 extern std::string normalize_utf8_nfc(const char *src);
 
+std::string to_utf8(const std::string &str);
 std::string to_utf8(const std::wstring &wstr);
+std::wstring from_utf8(const std::string &str);
 
 // Safely rename a file even if the target exists.
 // On Windows, the file explorer (or anti-virus or whatever else) often locks the file
