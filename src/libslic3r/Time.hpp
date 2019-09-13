@@ -23,12 +23,11 @@ const constexpr char *const SLICER_UTC_TIME_FMT = "%Y-%m-%d at %T";
 // ISO8601Z representation of time, without time zone info
 const constexpr char *const ISO8601Z_TIME_FMT = "%Y%m%dT%H%M%SZ";
 
+// FIXME MSVC std::get_time fails with this format...
 // The local, locale dependent time formatting.
-// FIXME Do not use this format with the following functions if not absolutely
-// necessary. Tests fail on Windows. If localized time formatting is needed,
-// use the GUI toolkit functions.
-// If used with time2str the currently set C locale (set with setlocale())
-// determines the output format
+// If localized time formatting is needed, might be better to use the GUI
+// toolkit functions. If used with time2str the currently set C locale
+// (set with setlocale()) determines the output format.
 const constexpr char *const LOCALE_TIME_FMT = "%x %X";
 
 enum class TimeZone { local, utc };

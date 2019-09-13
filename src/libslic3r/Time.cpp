@@ -76,6 +76,8 @@ inline PutTimeReturnT<TChar> _put_time(const std::tm *tms, const TChar *fmt)
     return {tms, fmt};
 }
 
+// VS2019 implementation satisfies SLICER_TIME_FMT but fails with ISO8601Z_TIME_FMT
+// and LOCALE_TIME_FMT. VS2019 does not have std::strptime: can't use the fallback...
 #ifdef _MSC_VER
 static const std::map<std::string, std::string> fallback_map = {
     {SLICER_TZ_TIME_FMT, "%04d-%02d-%02d at %02d:%02d:%02d"},
@@ -97,16 +99,6 @@ bool strptime(const char *str, const char *const fmt, std::tm *tms)
     tms->tm_sec  = s;         // 0-61 (0-60 in C++11)
     
     return true;
-}
-#endif
-
-#ifdef _MSC_VER
-// VS2019 implementation satisfies SLICER_TIME_FMT but fails with ISO8601Z_TIME_FMT
-// and LOCALE_TIME_FMT. VS2019 does not have std::strptime: can't use the fallback...
-template<class TChar>
-inline auto _get_time(std::tm *t, const TChar *f) -> decltype (std::get_time(t, f))
-{
-    return std::get_time(t, f);
 }
 #endif
 

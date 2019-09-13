@@ -5,30 +5,6 @@
 #include <iomanip>
 #include <locale>
 
-//#ifdef _MSC_VER
-//// Even in VS2019, std::get_time is buggy and can not parse ISO8601Z_TIME_FMT
-//// nor LOCALE_TIME_FMT
-//// until it gets corrected, here is the original parsing code with sscanf
-//time_t parse_time_ISO8601Z(const std::string &sdate)
-//{
-//    int y, M, d, h, m, s;
-//    if (sscanf(sdate.c_str(), "%04d%02d%02dT%02d%02d%02dZ", &y, &M, &d, &h, &m, &s) != 6)
-//        return time_t(-1);
-//    struct tm tms;
-//    tms.tm_year = y - 1900;  // Year since 1900
-//    tms.tm_mon  = M - 1;     // 0-11
-//    tms.tm_mday = d;         // 1-31
-//    tms.tm_hour = h;         // 0-23
-//    tms.tm_min  = m;         // 0-59
-//    tms.tm_sec  = s;         // 0-61 (0-60 in C++11)
-//#ifdef WIN32
-//    return _mkgmtime(&tms);
-//#else /* WIN32 */
-//    return timegm(&tms);
-//#endif /* WIN32 */
-//}
-//#endif
-
 namespace {
 
 void test_time_fmt(const char *fmt) {
@@ -65,11 +41,14 @@ TEST(Timeutils, Slic3r_UTC_Time_Format) {
     test_time_fmt(Slic3r::Utils::SLICER_UTC_TIME_FMT);
 }
 
-// There is no working std::strptime or std::get_time MSVC currently, so
-// no way to run the back and forth conversion test.
+// There is no working std::strptime or std::get_time in MSVC currently, so
+// no way to run the back and forth conversion test without a third party impl.
 #ifndef _MSC_VER
 TEST(Timeutils, Locale_Time_Format) {
     std::locale::global(std::locale(setlocale(LC_ALL, "")));
+    test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
+    
+    std::locale::global(std::locale(setlocale(LC_ALL, "zh_TW")));
     test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
 }
 #endif
