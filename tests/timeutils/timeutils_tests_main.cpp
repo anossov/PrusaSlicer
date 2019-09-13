@@ -5,6 +5,30 @@
 #include <iomanip>
 #include <locale>
 
+//#ifdef _MSC_VER
+//// Even in VS2019, std::get_time is buggy and can not parse ISO8601Z_TIME_FMT
+//// nor LOCALE_TIME_FMT
+//// until it gets corrected, here is the original parsing code with sscanf
+//time_t parse_time_ISO8601Z(const std::string &sdate)
+//{
+//    int y, M, d, h, m, s;
+//    if (sscanf(sdate.c_str(), "%04d%02d%02dT%02d%02d%02dZ", &y, &M, &d, &h, &m, &s) != 6)
+//        return time_t(-1);
+//    struct tm tms;
+//    tms.tm_year = y - 1900;  // Year since 1900
+//    tms.tm_mon  = M - 1;     // 0-11
+//    tms.tm_mday = d;         // 1-31
+//    tms.tm_hour = h;         // 0-23
+//    tms.tm_min  = m;         // 0-59
+//    tms.tm_sec  = s;         // 0-61 (0-60 in C++11)
+//#ifdef WIN32
+//    return _mkgmtime(&tms);
+//#else /* WIN32 */
+//    return timegm(&tms);
+//#endif /* WIN32 */
+//}
+//#endif
+
 namespace {
 
 void test_time_fmt(const char *fmt) {
@@ -30,50 +54,22 @@ void test_time_fmt(const char *fmt) {
 }
 
 TEST(Timeutils, ISO8601Z) {
-    using namespace Slic3r::Utils;
-
-#ifndef _MSC_VER
-    test_time_fmt(ISO8601Z_TIME_FMT);
-#else
-    time_t t = get_current_time_utc();
-
-    std::string tstr = format_time_ISO8601Z(t);
-    time_t parsedtime = parse_time_ISO8601Z(tstr);
-
-    ASSERT_EQ(t, t);
-    ASSERT_EQ(t, parsedtime);
-
-    parsedtime = parse_time_ISO8601Z("not valid string");
-    ASSERT_TRUE(parsedtime < time_t(0));
-#endif
+    test_time_fmt(Slic3r::Utils::ISO8601Z_TIME_FMT);
 }
 
 TEST(Timeutils, Slic3r_TZ_Time_Format) {
     test_time_fmt(Slic3r::Utils::SLICER_TZ_TIME_FMT);
 }
 
-#ifndef _MSC_VER // msvc std::get_time cannot handle this
 TEST(Timeutils, Slic3r_UTC_Time_Format) {
     test_time_fmt(Slic3r::Utils::SLICER_UTC_TIME_FMT);
 }
-#endif
 
 // There is no working std::strptime or std::get_time MSVC currently, so
 // no way to run the back and forth conversion test.
 #ifndef _MSC_VER
 TEST(Timeutils, Locale_Time_Format) {
-    test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
-
-    std::locale::global(std::locale(setlocale(LC_ALL, "en-US")));
-    test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
-
-    std::locale::global(std::locale(setlocale(LC_ALL, "cs-CZ")));
-    test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
-
-    std::locale::global(std::locale(setlocale(LC_ALL, "zh-CN")));
-    test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
-
-    std::locale::global(std::locale(setlocale(LC_ALL, "ko-KR")));
+    std::locale::global(std::locale(setlocale(LC_ALL, "")));
     test_time_fmt(Slic3r::Utils::LOCALE_TIME_FMT);
 }
 #endif

@@ -73,14 +73,10 @@ inline std::string format_time_ISO8601Z(time_t time)
     return time2str(time, TimeZone::utc, ISO8601Z_TIME_FMT);
 }
 
-#ifndef _MSC_VER
 inline time_t parse_time_ISO8601Z(const std::string &s)
 {
     return str2time(s, TimeZone::utc, ISO8601Z_TIME_FMT);
 }
-#else // on MSVC we need a manual implementation of this. std::get_time fails.
-time_t parse_time_ISO8601Z(const std::string &s);
-#endif
 // /////////////////////////////////////////////////////////////////////////////
 
 } // namespace Utils

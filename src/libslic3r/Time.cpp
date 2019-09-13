@@ -8,6 +8,7 @@
 #include <ctime>
 #include <cstdio>
 #include <clocale>
+#include <map>
 
 #include "libslic3r/Utils.hpp"
 
@@ -76,6 +77,30 @@ inline PutTimeReturnT<TChar> _put_time(const std::tm *tms, const TChar *fmt)
 }
 
 #ifdef _MSC_VER
+static const std::map<std::string, std::string> fallback_map = {
+    {SLICER_TZ_TIME_FMT, "%04d-%02d-%02d at %02d:%02d:%02d"},
+    {SLICER_UTC_TIME_FMT, "%04d-%02d-%02d at %02d:%02d:%02d"},
+    {ISO8601Z_TIME_FMT, "%04d%02d%02dT%02d%02d%02dZ"}
+};
+
+bool strptime(const char *str, const char *const fmt, std::tm *tms)
+{
+    int y, M, d, h, m, s;
+    if (sscanf(str, fmt, &y, &M, &d, &h, &m, &s) != 6)
+        return false;
+    
+    tms->tm_year = y - 1900;  // Year since 1900
+    tms->tm_mon  = M - 1;     // 0-11
+    tms->tm_mday = d;         // 1-31
+    tms->tm_hour = h;         // 0-23
+    tms->tm_min  = m;         // 0-59
+    tms->tm_sec  = s;         // 0-61 (0-60 in C++11)
+    
+    return true;
+}
+#endif
+
+#ifdef _MSC_VER
 // VS2019 implementation satisfies SLICER_TIME_FMT but fails with ISO8601Z_TIME_FMT
 // and LOCALE_TIME_FMT. VS2019 does not have std::strptime: can't use the fallback...
 template<class TChar>
@@ -83,24 +108,34 @@ inline auto _get_time(std::tm *t, const TChar *f) -> decltype (std::get_time(t, 
 {
     return std::get_time(t, f);
 }
-#else
+#endif
+
 template<class TChar>
 std::basic_istream<TChar> &operator>>(std::basic_istream<TChar> &stream,
-                                      GetPutTimeReturnT<TChar> &&gt)
+                                      GetTimeReturnT<TChar> &&gt)
 {
+#ifdef _MSC_VER
+    auto it = fallback_map.find(to_utf8(fmt));
+    if (it == fallback_map.end()) {
+        stream >> std::get_time(gt.tms, gt.fmt);
+    } else {
+#endif
     std::basic_string<TChar> str;
     std::getline(stream, str);
     std::string utf8str = to_utf8(str);
     strptime(utf8str.c_str(), gt.fmt, gt.tms);
+#ifdef _MSC_VER        
+    }
+#endif
+
     return stream;
 }
 
 template<class TChar>
-inline GetPutTimeReturnT<TChar> _get_time(std::tm *tms, const TChar *fmt)
+inline GetTimeReturnT<TChar> _get_time(std::tm *tms, const TChar *fmt)
 {
     return {tms, fmt};
 }
-#endif
 
 // Platform independent versions of gmtime and localtime. Completely thread
 // safe only on Linux. MSVC gtime_s and localtime_s sets global errno thus not
@@ -175,7 +210,7 @@ std::string _tm2str(const std::tm *tms, const TChar *fmt)
     return to_utf8(ss.str());
 }
 
-std::string tm2str(const std::tm *tms, const char *fmt)
+static std::string tm2str(const std::tm *tms, const char *fmt)
 {
 #ifdef _MSC_VER
     return _tm2str(tms, from_utf8(fmt).c_str());
@@ -231,30 +266,6 @@ time_t str2time(const std::string &str, TimeZone zone, const char *_fmt)
     ss.imbue(std::locale(setlocale(LC_ALL, nullptr)));
     return str2time(ss, zone, fmt);
 }
-
-#ifdef _MSC_VER
-// Even in VS2019, std::get_time is buggy and can not parse ISO8601Z_TIME_FMT
-// nor LOCALE_TIME_FMT
-// until it gets corrected, here is the original parsing code with sscanf
-time_t parse_time_ISO8601Z(const std::string &sdate)
-{
-    int y, M, d, h, m, s;
-    if (sscanf(sdate.c_str(), "%04d%02d%02dT%02d%02d%02dZ", &y, &M, &d, &h, &m, &s) != 6)
-        return time_t(-1);
-    struct tm tms;
-    tms.tm_year = y - 1900;  // Year since 1900
-    tms.tm_mon  = M - 1;     // 0-11
-    tms.tm_mday = d;         // 1-31
-    tms.tm_hour = h;         // 0-23
-    tms.tm_min  = m;         // 0-59
-    tms.tm_sec  = s;         // 0-61 (0-60 in C++11)
-#ifdef WIN32
-    return _mkgmtime(&tms);
-#else /* WIN32 */
-    return timegm(&tms);
-#endif /* WIN32 */
-}
-#endif
 
 }; // namespace Utils
 }; // namespace Slic3r
